@@ -75,6 +75,8 @@ Setze den Parameter für den Mindestwert an Übereinstimmung.
 
 `matchkey`: Muster, das noch als Treffer ausgegeben wird.
 
+Treffer mit einem schlechterem Muster als `matchkey` werden nicht berücksichtigt.
+
 Beispiel
 
 `"fn vn"`
@@ -102,6 +104,9 @@ global logpath = ""
     setlogpath(logfile::AbstractString)
 
 Setze den Namen der Datei für Logdaten
+
+Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben. 
+`setlogpath()`: gib den aktuellen Pfad der Logdatei aus.
 """ 
 function setlogpath(logfile::AbstractString)
     path = splitdir(logfile)[1]
@@ -113,8 +118,12 @@ function setlogpath(logfile::AbstractString)
     end
 end
 
+function setlogpath()
+    global logpath
+    return logpath
+end
+
 global filelog = Logging.NullLogger()
-global finfiltrate = false
 
 """
     GSSTRINGCOLS
@@ -154,7 +163,7 @@ module Rank
 """
     fileranks
 
-Dateiname der Liste mit Übereinstimmungsmustern. Wenn die entsprechende Datei nicht vorhanden ist, wird eine Rangliste von Mustern mit `makeranklist`erstellt.
+Dateiname der Liste mit Übereinstimmungsmustern. Wenn die entsprechende Datei nicht vorhanden ist, wird automatisch eine Rangliste von Mustern mit `makeranklist`erstellt.
 
 Beispiel:
 fn sd vn ae ab ao at
@@ -169,11 +178,18 @@ at
 fileranks = "GSQueryranks.txt"
 
 """
-    setfileranks(fileranks::AbstractString)
+    setfileofranks(fileranks::AbstractString)
 
-Setze den Dateinamen für die Liste mit Übereinstimmungsmustern.
+Setze den Dateinamen für die Liste mit Übereinstimmungsmustern. 
+
+Wenn die entsprechende Datei nicht vorhanden ist, wird für die Abfrage 
+automatisch eine Rangliste von Mustern erstellt.
+
+`setfileofranks()`: Gib den aktuellen Dateinamen aus.
 """
-setfileranks(file::AbstractString) = (global fileranks = file)
+setfileofranks(file::AbstractString) = (global fileranks = file)
+setfileofranks() = return fileranks
+
 
 const SLISTKEY = ["fn", "sd", "vn", "ae", "ab", "ao", "at"]
 const DXLISTKEY = Dict((k => i) for (i, k) in enumerate(SLISTKEY))
@@ -200,81 +216,6 @@ function makeranklist(le = SLISTKEY)
 end
 
 
-# löschen?
-"""
-        makedrank()
-    
-Erstelle ein Ranking für die Qualität der Treffer. Das Verzeichnis wird für
-Vergleiche genutzt.
-
-Normdaten in das Ranking einzubeziehen, erscheint nicht sinnvoll.
-"""
-function makedrank()
-    keys = String[]
-
-    # Fälle ohne GND-Nummer mit Sterbedatum
-    # vollständiger Name
-    for mkocc in [true, false],
-        mdate in ["sd ae ab ao",
-                  "sd ae ao",
-                  "sd ab ao",
-                  "ae ab ao",
-                  "sd ao",
-                  "ae ao",
-                  "ab ao",
-                  "sd",
-                  "ao"]
-
-        matchkey = "fn vn"
-        matchkey *= " " * mdate
-        mkocc && (matchkey *= " at")
-        push!(keys, matchkey)
-    end
-    # Ergänze Schlüssel, die sonst noch als Treffer vorkommen.
-    # Erster Lauf 2020-01-31, und Lauf mit dem Rest 2020-02-04
-    push!(keys, "sd ae ab ao at")
-    push!(keys, "ae ab ao at")
-
-
-    # Fälle ohne GND-Nummer mit Sterbedatum
-    # Teil des Names
-    for mkocc in [true, false],
-        mdate in ["sd ae ab ao",
-                  "sd ae ao",
-                  "sd ab ao",
-                  "ae ab ao",
-                  "sd ao",
-                  "ae ao",
-                  "ab ao",
-                  "sd",
-                  "ao"],
-        mkn in ["fn", "vn"]
-
-        matchkey = mkn
-        matchkey *= " " * mdate
-        mkocc && (matchkey *= " at")
-
-        push!(keys, matchkey)
-    end
-    # Ergänze Schlüssel, die sonst noch als Treffer vorkommen.
-    # Erster Lauf 2020-01-31, und Lauf mit dem Rest 2020-02-04
-
-    push!(keys, "fn vn at")
-    push!(keys, "ae ao at")
-    push!(keys, "ab ao at")
-    push!(keys, "fn vn")
-    push!(keys, "fn")
-    push!(keys, "vn")
-    push!(keys, "") # kleinstes Element
-
-    # Man kann hier mit dem Code spielen, bis ein Ausgleich zwischen den
-    # Bestandteilen gefunden ist. Zuletzt gilt: Je mehr Angaben, desto besser.
-    ltf(a, b) = length(a) < length(b)
-    sort!(keys, alg = InsertionSort, lt = ltf, rev = true)
-    Dict(key => i for (i, key) in enumerate(keys))
-end
-
-# const drank = makedrank()
 
 """
     drank
@@ -283,10 +224,30 @@ Verzeichnis von Mustern zu Rängen.
 """
 drank = Dict{String, Int}()
 
-function setdrank()
-    global drank = Dict(p => rk for (rk, p) in enumerate(makeranklist()))
+"""
+    setdrank(fileranks)
+
+Lies eine Liste mit Übereinstimmungsmustern aus `fileranks`.
+
+`setdrank()` erzeugt eine Standardversion der Liste von Übereinstimmungsmustern.
+"""
+function setdrank(fileranks)
+    global drank
+    if isfile(fileranks)
+        @info "Lies Übereinstimmungsmuster aus " fileranks
+        drank = Rank.readdrank(fileranks)
+    else
+        @info "Datei nicht gefunden " fileranks
+        @info "Liste der Übereinstimmungsmuster wird erzeugt."
+        setdrank()
+    end
+    return nothing
 end
 
+function setdrank() 
+    global drank
+    drank = Dict(p => rk for (rk, p) in enumerate(makeranklist()))
+end
 
 """
     readdrank(file::AbstractString)
@@ -294,16 +255,22 @@ end
 Lies Liste von Übereinstimmungsmustern aus `file`.
 """
 function readdrank(file::AbstractString)
-    global drank = Dict(p => rk for (rk, p) in enumerate(eachline(file)))
-    mxk = maximum(keys(drank))
+    local drank = Dict(p => rk for (rk, p) in enumerate(eachline(file)))
     # Der letzte Rang entspricht dem leeren Muster
-    if drank[mxk] != ""
-        drank[mxk + 1] = ""
-    end    
+    if !haskey(drank, "")
+        drank[""] = maximum(values(drank)) + 1
+    end
+    drank
 end
 
+"""
+    islessinset(a, b; drank=drank)
 
-function islessinset(a, b)
+Rückgabewert `drank[b] < drank[a]`
+
+Prüfe, ob `a` und `b` als Schlüssel vorhanden sind. Beachte: Je kleiner der Rang, desto besser ist das Muster.
+"""
+function islessinset(a, b; drank=drank)
     pa = get(drank, a, 0)
     pb = get(drank, b, 0)
     if pa == 0
@@ -316,16 +283,18 @@ function islessinset(a, b)
     return pb < pa
 end
 
-
 getrank(key) = drank[key]
 
 isvalidrank(key) = haskey(drank, key)
 
+"""
+    ranklist()
+
+Gib die Liste mit Übereinstimmungsmustern aus.
+"""
 ranklist() = sort(collect(drank), lt=(a, b) -> a.second < b.second)
 
 end # module Rank
-
-## Globale Variablen
 
 inputcols = [:ID,
              :Praefix,
@@ -341,25 +310,29 @@ inputcols = [:ID,
 
 
 """
-    setinputcols(inputcols)
+    setinputcols(cols)
 
-Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen.
-Ohne Argument: Gib die Liste der Spaltennamen der Eingabetabelle aus.
+Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen
+
+`setinputcols()`: Gib die Spaltennamen aus.
 """
-setinputcols(cols) = (global inputcols = Symbol.(cols))
-setinputcols() = inputcols
+function setinputcols(cols)
+    global inputcols
+    inputcols = Symbol.(cols)
+end
 
+setinputcols() = inputcols
 
 """
     setcolnameid(id)
 
-Setze den Namen der Spalte, welche die ID enthält.
+Setze den Namen der Spalte, welche die ID enthält
+
+Voreinstellung: `:ID`
 """
 setcolnameid(id) = (global inputcols[1] = Symbol(id))
 
 colid() = (global inputcols; getindex(inputcols::Array{Symbol, 1}, 1))
-
-## Funktionen
 
 import Base.isless
 
@@ -394,108 +367,36 @@ function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
     return rdt = JSON.parse(rds4parser)
 end
 
-"""
-    getGSindex(givenname::AbstractString,
-               familyname::AbstractString,
-               occupation::AbstractString;
-               format = "json",
-               place = "",
-               offset = 0,
-               limit = LIMITN)
-
-Frage die Index-Schnittstelle der GS nach Vorname, Name und Amt ab. Das Jahr nehmen wir
-nicht auf, da die Zahl der Treffer übersichtlich bleiben wird.
-"""
-function getGSindex(givenname::AbstractString,
-                    familyname::AbstractString;
-                    occupation = "",
-                    place = "",
-                    format = "json",
-                    offset = 0,
-                    limit = LIMITN)
-    # Beispiel
-    # name=Berg%20Konrad&amt=bischof&format=json
-    csurl = [("http://germania-sacra-datenbank.uni-goettingen.de/persons/index?"
-              * "name=")]
-    # http://germania-sacra-datenbank.uni-goettingen.de/persons/index?name=rechberg&format=json
-    sep = ""
-    if givenname != ""
-        push!(csurl, encodeurl(givenname))
-        sep = "%20"
-    end
-    familyname != "" && push!(csurl, sep * encodeurl(familyname))
-    occupation != "" &&  push!(csurl, "&amt=" * encodeurl(occupation))
-    place != "" && push!(csurl, "&ort=" * encodeurl(place))
-    push!(csurl, "&format=" * format)
-    push!(csurl, "&offset=" * string(offset))
-    push!(csurl, "&limit=" * string(limit))
-    surl = join(csurl)
-
-    rdt = Dict{String, Any}()
-    rq = HTTP.request("GET", surl, readtimeout = 30, retries = 5);
-        
-    rds = String(rq.body);
-    rds4parser = replace(rds, r"\n *" => "");
-    rdt = JSON.parse(rds4parser)
-    if length(rdt["records"]) == LIMITN
-        @info "Limit erreicht" familyname givenname
-    end
-    return rdt
-end
-
-
-
-# löschen?
-"""
-    encodeurl(s)::String
-
-"""
-function encodeurl(s)::String
-    cs = String[]
-    for c in s
-        cu = codeunits(string(c))
-        for b in cu
-            push!(cs, "%")
-            push!(cs, bytes2hex([b]))
-        end
-    end
-    cs
-    join(cs)
-end
-
 
 """
     reconcile!(df::AbstractDataFrame,
                dfocc::AbstractDataFrame,
                nmsg = 40,
-               toldateofdeath = 5,
-               toloccupation = 5)
+               toldateofdeath = 2,
+               toloccupation = 2)
 
-Frage GS nacheinander nach Name und Amt und dann nach Name und Ort ab.
+Frage das digitale Personenregister nach Name und Ort ab. 
+
+Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
-`toloccupation` als Toleranz für Amtsdaten
+`toloccupation` als Toleranz für Amtsdaten.
 Für Testdaten kann eine View auf `df` übergeben werden.
 """
 function reconcile!(df::AbstractDataFrame,
                     dfocc::AbstractDataFrame;
                     nmsg = 40,
-                    toldateofdeath = 5,
-                    toloccupation = 5)
+                    toldateofdeath = 2,
+                    toloccupation = 2)
 
     global filelog
     global logpath
 
-    if length(Rank.drank) == 0 
-        if isfile(Rank.fileranks)
-            Rank.readdrank(Rank.fileranks)
-        else
-            @info "Datei nicht gefunden " Rank.fileranks
-            @info "Rangliste wird erzeugt."
-            Rank.setdrank()
-        end
+    if length(Rank.drank) == 0
+        Rank.setdrank()
     end
-
-
+    
     dfcols = Symbol.(names(df))
     if !(colid() in dfcols)
         error("Die Eingabetabelle enthält keine passende Spalte für die ID (ist: `$(colid())`). "
@@ -520,8 +421,7 @@ function reconcile!(df::AbstractDataFrame,
     @info "Gültige Ämter" GSOcc.occupations
 
     dictquery = Dict("name" => "",
-                     "ort" => "",
-                     "amt" => "")
+                     "ort" => "")
 
     dbest = Dict{Int, Int}()
     irow = 1
@@ -563,11 +463,9 @@ function reconcile!(df::AbstractDataFrame,
 
                     gsres = getGS(URLGSINDEX, dictquery)
                     append!(records, evaluate!(gsres, row, rowocc, toldateofdeath, toloccupation))
-                    @infiltrate
                 end
                 if length(records) > 0
                     bestrec, posbest = findmax(records)
-                    @infiltrate
                     if bestrec >= minscore
                         nbest = writematch!(row, bestrec, records)
                     else
@@ -712,7 +610,6 @@ function queryGSNbyGND!(row, colsrc::Symbol, coldst::Symbol)
         ares = gsres["records"]
         nres = length(ares)
         if nres > 0
-            @infiltrate
             row[coldst] = gsn = ares[1]["item.gsn"][1]["nummer"]
         elseif nres > 1
             @warn "Mehrere Treffer für" gndnumber
@@ -921,43 +818,6 @@ function evaluategnfn!(record, row)
     return matchkey
 end
 
-
-function makequerygnfn(givenname::AbstractString, familyname::AbstractString)::String
-    encgivenname = encodeurl(givenname)
-    encfamilyname = encodeurl(familyname)
-    return ("query[0][field]=person.vorname&query[0][operator]=contains"
-            * "&query[0][value]=" * encgivenname
-            * "&query[0][connector]=or"
-            * "&query[1][field]=person.vornamenvarianten&query[1][operator]=contains"
-            * "&query[1][value]=" * encgivenname
-            * "&query[1][connector]=and"
-            * "&query[2][field]=person.familienname&query[2][operator]=contains"
-            * "&query[2][value]=" * encfamilyname
-            * "&query[2][connector]=or"
-            * "&query[3][field]=person.familiennamenvarianten&query[3][operator]=contains"
-            * "&query[3][value]=" * encfamilyname
-            * "&query[3][connector]=and"
-            * "&query[4][field]=amt.bezeichnung&query[4][operator]=contains"
-            * "&query[4][value]=Bischof"
-            * "&format=json"
-            * "&limit=" * string(LimitN))
-end
-
-function makequerygn(givenname::AbstractString)::String
-    encgivenname = encodeurl(givenname)
-    return ("query[0][field]=person.vorname&query[0][operator]=contains"
-            * "&query[0][value]=" * encgivenname
-            * "&query[0][connector]=or"
-            * "&query[1][field]=person.vornamenvarianten&query[1][operator]=contains"
-            * "&query[1][value]=" * encgivenname
-            * "&query[1][connector]=and"
-            * "&query[2][field]=amt.bezeichnung&query[4][operator]=contains"
-            * "&query[2][value]=Bischof"
-            * "&format=json"
-            * "&limit=" * string(LimitN))
-end
-
-
 function writematch!(row, bestrec, records)
     if bestrec <= minscore
         @error ("Datensatz soll nicht geschrieben werden: " * string(row[colid()]))
@@ -1023,8 +883,6 @@ function getocc(rdt)
     return join(aocc, ", "), join(filter(!isequal(""), aoccplace), ", ")
 end
 
-
-
 function makeGSDataFrame(df::AbstractDataFrame)
     dfcols = Symbol.(names(df))
     if !(colid() in dfcols)
@@ -1035,7 +893,6 @@ function makeGSDataFrame(df::AbstractDataFrame)
     global inputcols
     cpcols = intersect(inputcols, dfcols)
     dfgs = copy(df[!, cpcols])
-    @infiltrate
     # `insertcols!` scheint nicht einfacher
     for col in GSSTRINGCOLS
         dfgs[!, col] .= ""
@@ -1142,41 +999,6 @@ function deltaID(ref, gs)
     end
 end
 
-# löschen?
-"""
-    getGSindexocc(locc)
-
-Frage GS nach allen Ämtern in `locc` ab. (Alle Bischöfe in der GS).
-Beispiel
-locc = ["Bischof", "Elekt", "Administrator", "Patriarch", "Metropolit", "Generalvikar"]
-"""
-function getGSindexocc(locc)
-    cols = setdiff(GSSTRINGCOLS, [:Qualitaet_GS, :nTreffer_GS])
-    df = DataFrame(fill(String, length(cols)), cols, 0)
-    step = 200
-
-    # 
-
-    for occ in locc
-        offset = 0
-        nocc = 0
-        while true
-            rqr = getGSindex("", "", occupation = occ, offset = offset, limit = step, fwarn = false)
-            offset += step
-            lrqr = length(rqr["records"])
-            nocc += lrqr
-            for rdt in rqr["records"]
-                push!(df, readgsrecord(rdt))
-            end
-            lrqr < 1 && break
-        end
-        println(occ, ": ", nocc)
-    end
-    
-    return df
-end
-
-# löschen?
 """
     readgsrecord(rdt)
 
@@ -1184,7 +1006,6 @@ Lies daten aus `rdt` in ein Verzeichnis(Dict).
 """
 function readgsrecord(rdt)
     agsn = String[]
-    @infiltrate typeof(rdt) != Dict{String, Any}
     items = rdt["item.gsn"]
     for item in items
         push!(agsn, item["nummer"])

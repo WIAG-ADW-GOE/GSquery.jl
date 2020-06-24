@@ -6,7 +6,7 @@ des Projektes Germania Sacra.
 
 [Digitales Personenregister](http://germania-sacra-datenbank.uni-goettingen.de/)
 
-[API](http://personendatenbank.germania-sacra.de/api/v1.0/person)
+API: http://personendatenbank.germania-sacra.de/api/v1.0/person
 
 [API Beschreibung](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/)
 
@@ -26,21 +26,63 @@ Regel sehr kurz.
 
 ## Verwendung
 
-Installiere das Paket
+Installiere das Paket, z.B. mit
+`git clone https://github.com/WIAG-ADW-GOE/GSquery.jl`
+
 ``` julia
 using Pkg
-Pkg.add()
+Pkg.add("[Pfad zu GSquery]/GSQuery")
+
+using DataFrames
+
+dfpersonen = DataFrame(ID = [2522, 4446, 3760, 4609, 3580],
+					   Praefix = ["Graf von", "", "von", "", "von"],
+					   Vorname = ["Hartmann", "Herwig", "Johann", "Pilgrim", "Johann"],
+					   Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
+					   Sterbedatum = ["1286", "", "1411", "", "1305"])
+
+5×5 DataFrame
+│ Row │ ID    │ Praefix  │ Vorname  │ Familienname │ Sterbedatum │
+│     │ Int64 │ String   │ String   │ String       │ String      │
+├─────┼───────┼──────────┼──────────┼──────────────┼─────────────┤
+│ 1   │ 2522  │ Graf von │ Hartmann │ Dillingen    │ 1286        │
+│ 2   │ 4446  │          │ Herwig   │              │             │
+│ 3   │ 3760  │ von      │ Johann   │ Egloffstein  │ 1411        │
+│ 4   │ 4609  │          │ Pilgrim  │              │             │
+│ 5   │ 3580  │ von      │ Johann   │ Sierck       │ 1305        │
+
+
+dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446", "4609"],
+                     Bistum = ["Augsburg", "Utrecht", "Toul", "Würzburg", "Würzburg", "Meißen", "Ölmütz"],
+                     Amtsart = ["Bischof", "Bischof", "Bischof", "Koadjutor des Bischofs", "Bischof", "Bischof", "Bischof"],
+                     Amtsbeginn = ["1248", "1291", "1296", "1396", "1400", "1106", "1182"],
+                     Amtsende = ["1286", "1296", "1305", "1400", "1411", "1119", "1184"])
+
+7×5 DataFrame
+│ Row │ ID_Bischof │ Bistum   │ Amtsart                │ Amtsbeginn │ Amtsende │
+│     │ String     │ String   │ String                 │ String     │ String   │
+├─────┼────────────┼──────────┼────────────────────────┼────────────┼──────────┤
+│ 1   │ 2522       │ Augsburg │ Bischof                │ 1248       │ 1286     │
+│ 2   │ 3580       │ Utrecht  │ Bischof                │ 1291       │ 1296     │
+│ 3   │ 3580       │ Toul     │ Bischof                │ 1296       │ 1305     │
+│ 4   │ 3760       │ Würzburg │ Koadjutor des Bischofs │ 1396       │ 1400     │
+│ 5   │ 3760       │ Würzburg │ Bischof                │ 1400       │ 1411     │
+│ 6   │ 4446       │ Meißen   │ Bischof                │ 1106       │ 1119     │
+│ 7   │ 4609       │ Ölmütz   │ Bischof                │ 1182       │ 1184     │
+
+
+
 ```
 
-Lade weitere nützliche Pakete
+
+
+
+
+Alternativ: lies die Daten ein
 ```julia
 using FileIO
 using CSVFiles
-using DataFrames
-```
 
-Lies die Daten ein
-```julia
 dateipersonen = File(format"CSV", "personen.tsv")
 dfpersonen = DataFrame(load(dateipersonen, delim = '\t'))
 
@@ -51,13 +93,13 @@ dfaemter = DataFrame(load(dateiaemter, delim = '\t'))
 
 Erzeuge die Ausgabetabelle
 ```julia
-GS.setcolnameid(:ID) # nur nötig, falls die Spalte nicht 'ID' heißt.
-dfpersonengs = GS.makeGSDataFrame(dfpersonen)
+GSquery.setcolnameid(:ID) # nur nötig, falls die Spalte nicht 'ID' heißt.
+dfpersonengs = GSquery.makeGSDataFrame(dfpersonen)
 ```
 
 Befülle die Ausgabetabelle
 ```julia
-GS.reconcile!(dfpersonengs, dfaemter)
+GSquery.reconcile!(dfpersonengs, dfaemter)
 ```
 
 Zeige das Ergebnis an
@@ -180,17 +222,29 @@ Die Ausgabe ist eine erweiterte Personentabelle mit mindestens folgenden Spalten
 * `Dioezesen_GS`
 * `QRang_GS`
 
+
 ## Parameter
 
+---
 
+```julia
+	setcolnameid(id)
 
-## Funktionen
+```
+
+Setze den Namen der Spalte, welche die ID enthält
+
+Voreinstellung: `:ID`
+
+---
 
 `setminmatchkey(matchkey::AbstractString)`
 
 Setze den Parameter für den Mindestwert an Übereinstimmung
 
 `matchkey`: Muster, das noch als Treffer ausgegeben wird.
+
+Treffer mit einem schlechterem Muster als `matchkey` werden nicht berücksichtigt.
 
 Beispiel
 
@@ -202,17 +256,97 @@ Beispiel
 
 Setze den Namen der Datei für Logdaten
 
+Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben. 
+`setlogpath()` gibt den aktuellen Pfad der Logdatei aus.
+
 ---
 
 ```julia
-setfileranks(fileranks::AbstractString)
+Rank.setfileofranks(fileranks::AbstractString)
 ```
 
 Setze den Dateinamen für die Liste mit Übereinstimmungsmustern.
 
+Wenn die entsprechende Datei nicht vorhanden ist, wird für die Abfrage 
+automatisch eine Rangliste von Mustern erstellt.
+
+`setfileofranks()`: Gib den aktuellen Dateinamen aus.
+
 ---
 
+```julia
+Rank.setdrank(fileranks = Rank.fileranks)
+```
 
-# Einschränkungen
+Lies eine Liste mit Übereinstimmungsmustern aus `fileranks`.
+
+`Rank.setdrank()` erzeugt eine Standardversion der Liste von Übereinstimmungsmustern.
+
+---
+
+```julia
+Rank.ranklist()
+```
+
+Gib die Liste mit Übereinstimmungsmustern aus.
+
+---
+
+```julia
+setinputcols(cols)
+```
+
+Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen
+
+`setinputcols()`: Gib die Spaltennamen aus.
+
+---
+
+<!-- Parameterfunktionen aus GSOcc aufnehmen -->
+
+## Funktionen
+
+```julia
+reconcile!(df::AbstractDataFrame,
+           dfocc::AbstractDataFrame,
+           nmsg = 40,
+           toldateofdeath = 2,
+           toloccupation = 2)
+```
+
+Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz.
+
+Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
+Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
+`toloccupation` als Toleranz für Amtsdaten.
+Für Testdaten kann eine View auf `df` übergeben werden.
+
+---
+
+```julia
+
+```
+
+---
+
+```julia
+
+```
+
+---
+
+```julia
+
+```
+
+
+
+
+
+
+
+
+## Einschränkungen
 Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die
 Abfrageschleife unter Umständen nicht wieder aufgenommen.
