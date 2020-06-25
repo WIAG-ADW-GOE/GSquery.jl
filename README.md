@@ -1,15 +1,17 @@
 # GSquery
-Ergänze Personendaten in Tabellenform um Angaben aus dem digitalen Personenregister
-des Projektes Germania Sacra.
+Reconciling von geistlichen Personen des Mittelalters und der frühen Neuzeit.
+
+Ergänze Personendaten in Tabellenform um Angaben aus dem Digitalen Personenregister
+des Forschungsprojektes Germania Sacra (Akademie der Wissenschaften zu Göttingen).
 
 Bewerte dabei die gefundenen Datensätze nach der Übereinstimmung mit Feldern in den Abfragedaten.
 
 Angaben zu Amtsdaten werden nur dann als übereinstimmend gewertet, wenn der Typ des
 Amtes in einer konfigurierbaren Liste von Ämtern vorkommt.
 
-[Projektseite der Germania Sacra](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/)
+[Projektseite der Germania Sacra](http://www.germania-sacra.de/)
 
-[Digitales Personenregister](http://germania-sacra-datenbank.uni-goettingen.de/)
+[Digitales Personenregister](http://personendatenbank.germania-sacra.de/)
 
 API: http://personendatenbank.germania-sacra.de/api/v1.0/person
 
@@ -370,7 +372,7 @@ Gib die Liste mit Übereinstimmungsmustern aus.
 setinputcols(cols)
 ```
 
-Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen
+Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen.
 
 `setinputcols()`: Gib die Spaltennamen aus.
 
@@ -407,7 +409,7 @@ Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 ---
 
 ## Verschiedenes
-Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die 
+Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird  
 die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
 Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
 bearbeitet sind.
