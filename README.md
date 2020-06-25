@@ -381,7 +381,7 @@ Gib die Liste mit Übereinstimmungsmustern aus.
 setinputcols(cols)
 ```
 
-Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen
+Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen.
 
 `setinputcols()`: Gib die Spaltennamen aus.
 
@@ -407,7 +407,7 @@ Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 ---
 
 ## Verschiedenes
-Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die 
+Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird  
 die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
 Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
 bearbeitet sind.
