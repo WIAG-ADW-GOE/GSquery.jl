@@ -335,15 +335,6 @@ setequivalentoccupations(["Gewählter Bischof" => "Elekt",
 
 ---
 
-`setlogpath(logfile::AbstractString)`
-
-Setze den Namen der Datei für Logdaten
-
-Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben. 
-`setlogpath()` gibt den aktuellen Pfad der Logdatei aus.
-
----
-
 ```julia
 Rank.setfileofranks(fileranks::AbstractString)
 ```
@@ -382,6 +373,17 @@ setinputcols(cols)
 Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übernommen werden sollen
 
 `setinputcols()`: Gib die Spaltennamen aus.
+
+---
+
+```julia
+setlogpath(logfile::AbstractString)
+```
+
+Setze den Namen der Datei für Logdaten
+
+Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben. 
+`setlogpath()` gibt den aktuellen Pfad der Logdatei aus.
 
 ---
 
