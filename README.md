@@ -405,7 +405,7 @@ Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 ---
 
 ## Verschiedenes
-Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die 
+Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird
 die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
 Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
 bearbeitet sind.
