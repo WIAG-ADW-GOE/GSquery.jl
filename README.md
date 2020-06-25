@@ -1,15 +1,17 @@
 # GSquery
-Ergänze Personendaten in Tabellenform um Angaben aus dem digitalen Personenregister
-des Projektes Germania Sacra.
+Reconciling von geistlichen Personen des Mittelalters und der frühen Neuzeit.
+
+Ergänze Personendaten in Tabellenform um Angaben aus dem Digitalen Personenregister
+des Forschungsprojektes Germania Sacra (Akademie der Wissenschaften zu Göttingen).
 
 Bewerte dabei die gefundenen Datensätze nach der Übereinstimmung mit Feldern in den Abfragedaten.
 
 Angaben zu Amtsdaten werden nur dann als übereinstimmend gewertet, wenn der Typ des
 Amtes in einer konfigurierbaren Liste von Ämtern vorkommt.
 
-[Projektseite der Germania Sacra](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/)
+[Projektseite der Germania Sacra](http://www.germania-sacra.de/)
 
-[Digitales Personenregister](http://germania-sacra-datenbank.uni-goettingen.de/)
+[Digitales Personenregister](http://personendatenbank.germania-sacra.de/)
 
 API: http://personendatenbank.germania-sacra.de/api/v1.0/person
 
