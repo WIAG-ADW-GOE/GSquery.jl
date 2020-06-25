@@ -278,7 +278,7 @@ Die Ausgabe ist eine erweiterte Personentabelle mit mindestens folgenden Spalten
 ---
 
 ```julia
-	setcolnameid(id)
+setcolnameid(id)
 
 ```
 
@@ -329,7 +329,7 @@ Setze Liste von Zuordnungen für als gleichwertig betrachtete Ämter.
 Beispiel
 
 ```julia
-GSOcc.setequivalentoccupations(["Gewählter Bischof" => "Elekt", 
+setequivalentoccupations(["Gewählter Bischof" => "Elekt", 
                           "Erwählter Bischof" => "Elekt"])
 ```
 
@@ -395,14 +395,12 @@ reconcile!(df::AbstractDataFrame,
            toldateofdeath = 2,
            toloccupation = 2)
 ```
+Frage das digitale Personenregister nach Name und Ort ab. 
 
-Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz.
-
-Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz. Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
-Für Testdaten kann eine View auf `df` übergeben werden.
 
 ---
 
