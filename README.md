@@ -22,7 +22,9 @@ Das Paket ist zur Verwendung mit [Julia](https://julialang.org/) vorgesehen.
 * [Verwendung](#verwendung)
 * [Eingangsdaten](#eingangsdaten)
 * [Ausgabedaten](#ausgabedaten)
-* [Einschränkungen](#einschr-nkungen)
+* [Parameter](#parameter)
+* [Funktionen](#funktionen)
+* [Verschiedenes](#verschiedenes)
 
 ## Verwendung
 
@@ -30,12 +32,15 @@ Installiere das Paket, z.B. mit
 `git clone https://github.com/WIAG-ADW-GOE/GSquery.jl`
 
 ``` julia
-using Pkg
-Pkg.add("[Pfad zu GSquery]/GSQuery")
+julia> using Pkg
+julia> Pkg.add("[Pfad zu GSquery]/GSQuery")
 
-using DataFrames
+julia> using DataFrames
+```
 
-dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
+Lege Abfragedaten fest.
+``` julia
+julia> dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
                        Praefix = ["Graf von", "", "von", "", "von"],
                        Vorname = ["Hartmann", "Herwig", "Johann", "Pilgrim", "Johann"],
                        Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
@@ -52,7 +57,7 @@ dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
 │ 5   │ 3580  │ von      │ Johann   │ Sierck       │ 1305        │
 
 
-dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446", "4609"],
+julia> dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446", "4609"],
                      Bistum = ["Augsburg", "Utrecht", "Toul", "Würzburg", "Würzburg", "Meißen", "Ölmütz"],
                      Amtsart = ["Bischof", "Bischof", "Bischof", "Koadjutor des Bischofs", "Bischof", "Bischof", "Bischof"],
                      Amtsbeginn = ["1248", "1291", "1296", "1396", "1400", "1106", "1182"],
@@ -69,15 +74,20 @@ dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446
 │ 5   │ 3760       │ Würzburg │ Bischof                │ 1400       │ 1411     │
 │ 6   │ 4446       │ Meißen   │ Bischof                │ 1106       │ 1119     │
 │ 7   │ 4609       │ Ölmütz   │ Bischof                │ 1182       │ 1184     │
-
-
-GSquery.setcolnameid(:ID_Bischof)
-
-dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
-
 ```
 
-Frage das digitales Personenregister ab
+Gib den Namen der Spalte an, in der die ID gespeichert ist und welche die beiden
+Tabellen verknüpft.
+``` julia
+julia> GSquery.setcolnameid(:ID_Bischof)
+```
+
+Erzeuge die Ausgabetabelle.
+``` julia
+julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
+```
+
+Frage das digitale Personenregister ab und zeige das Ergebnis an.
 ```julia
 julia> GSquery.reconcile!(dfpersonengs, dfaemter; nmsg=2)
 
@@ -113,35 +123,45 @@ julia> dfpersonengs[!, [:Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :Q
   
 ```
 
-Alternativ: lies die Daten ein; Beispieldaten: [`personen.tsv`](./data/personen.tsv), 
+Die Spalte `Qualitaet_GS` gibt an, wie gut die Übereinstimmung des Treffers mit den
+angegebenen Daten ist. Dabei steht jedes Kürzel für ein übereinstimmendes Datenfeld:
+* `fn`: Familiename
+* `vn`: Vorname
+* `sd`: Sterbedatum (Jahr)
+* `at`: Amtsart
+* `ab`: Amtsbeginn
+* `ae`: Amtsende
+* `ao`: Amtsort (Bistum)
+
+Alternativ: lies die Daten aus Dateien ein; Beispieldaten: [`personen.tsv`](./data/personen.tsv), 
 [`aemter.tsv`](./data/aemter.tsv).
 
 ```julia
-using FileIO
-using CSVFiles
+julia> using FileIO
+julia> using CSVFiles
 
-dateipersonen = File(format"CSV", "personen.tsv")
-dfpersonen = DataFrame(load(dateipersonen, delim = '\t'))
+julia> dateipersonen = File(format"CSV", "personen.tsv")
+julia> dfpersonen = DataFrame(load(dateipersonen, delim = '\t'))
 
 
-dateiaemter = File(format"CSV", "aemter.tsv")
-dfaemter = DataFrame(load(dateiaemter, delim = '\t'))
+julia> dateiaemter = File(format"CSV", "aemter.tsv")
+julia> dfaemter = DataFrame(load(dateiaemter, delim = '\t'))
 ```
 
 Erzeuge die Ausgabetabelle
 ```julia
-GSquery.setcolnameid(:ID) # nur nötig, falls die Spalte nicht 'ID' heißt.
-dfpersonengs = GSquery.makeGSDataFrame(dfpersonen)
+julia> GSquery.setcolnameid(:ID) # nur nötig, falls die Spalte nicht 'ID' heißt.
+julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen)
 ```
 
 Befülle die Ausgabetabelle
 ```julia
-GSquery.reconcile!(dfpersonengs, dfaemter)
+julia> GSquery.reconcile!(dfpersonengs, dfaemter)
 ```
 
 Zeige das Ergebnis an
 ```
-dfpersonengs[!, [:ID, :Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :QRang_GS, :GSN1_GS, :Dioezese_GS, :Aemter_GS]]
+julia> dfpersonengs[!, [:ID, :Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :QRang_GS, :GSN1_GS, :Dioezese_GS, :Aemter_GS]]
 
 │ Row │ ID    │ Vorname   │ Familienname │ Sterbedatum │ Qualitaet_GS         │ QRang_GS │ GSN1_GS       │ Dioezese_GS │ Aemter_GS                │
 │     │ Int64 │ String    │ String       │ Int64?      │ String               │ Int64    │ String        │ String      │ String                   │
@@ -159,19 +179,12 @@ dfpersonengs[!, [:ID, :Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :QRa
 │ 11  │ 4610  │ Kaim      │              │ missing     │                      │ 199      │               │             │                          │
 │ 12  │ 4234  │ Johannes  │              │ missing     │ vn ae ab ao at       │ 29       │ 056-00832-001 │ Konstanz    │ Bischof, Abt, Abt        │
 │ 13  │ 4141  │ Markward  │              │ missing     │ vn ae ab ao at       │ 29       │ 030-03731-001 │ Hildesheim  │ Bischof                  │
-
 ```
 
-Die Spalte `Qualitaet_GS` gibt an, wie gut die Übereinstimmung des Treffers mit den
-angegebenen Daten ist. Dabei steht jedes Kürzel für ein übereinstimmendes Datenfeld:
-* `fn`: Familiename
-* `vn`: Vorname
-* `sd`: Sterbedatum (Jahr)
-* `at`: Amtsart
-* `ab`: Amtsbeginn
-* `ae`: Amtsende
-* `ao`: Amtsort (Bistum)
-
+Speichere das Ergebnis
+```julia
+julia> save("personen_gs.tsv", dfpersonengs)
+``` 
 
 ## Eingangsdaten
 
@@ -372,7 +385,6 @@ Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übern
 
 ---
 
-<!-- Parameterfunktionen aus GSOcc aufnehmen -->
 
 ## Funktionen
 
@@ -394,7 +406,7 @@ Für Testdaten kann eine View auf `df` übergeben werden.
 
 ---
 
-## Anmerkungen
+## Verschiedenes
 Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die 
 die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
 Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
