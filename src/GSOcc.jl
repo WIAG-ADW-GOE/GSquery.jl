@@ -21,20 +21,29 @@ Beispiel
  "Metropolit"]
 """
 global occupations = ["Bischof", "Vikar", "Elekt", "Administrator", "Patriarch", "Metropolit"]
-global rgxocc = Regex(join(occupations, "|"), "i")
+regexor(lms::Array{<:AbstractString, 1}) = Regex(join(lms, "|"), "i")
+global rgxocc = regexor(occupations)
 
 """
     setoccupations(occ::Vector{<:AbstractString})
     
 Setze die Liste der Ämter, die bei der Abfrage in Betracht gezogen werden.
 
-Beispiel:
+`setoccupations()`: Gib die aktuelle Liste aus.
+
+Beispiel
+
+```julia
 setoccupations(["Pfarrer", "Vikar"])
+```
 """
 function setoccupations(occ::Vector{<:AbstractString})
     global occupations = occ
-    global rgxocc = Regex(join(occupations, "|"), "i")
+    global rgxocc = regexor(occupations)
+    occupations
 end
+
+setoccupations() = occupations
 
 """
     equivrls
@@ -46,18 +55,25 @@ equivrls = ["Gewählter Bischof" => "Elekt",
             "Fürstbischof" => "Bischof"]
 
 """
-    setequivalentoccupations(listofpairs)
+    setequivalentoccupations(lequivocc)
 
 Setze Liste von Zuordnungen für als gleichwertig betrachtete Ämter.
 
+`setequivalentoccupations()`: Gib die aktuelle Liste aus.
+
 Beispiel
 
-setequivalentoccupations(["Gewählter Bischof" => "Elekt", "Erwählter Bischof" => "Elekt"])
+```julia
+setequivalentoccupations(["Gewählter Bischof" => "Elekt", 
+                          "Erwählter Bischof" => "Elekt"])
+```
 """
-function setequivalentoccupations(listofpairs)
+function setequivalentoccupations(lequivocc)
     global equivrls
-    equivrls = [Pair(p...) for p in listofpairs]
+    equivrls = [Pair(p...) for p in lequivocc]
 end
+
+setequivalentoccupations() = equivrls
 
 const KEYS = [["ae", "ab", "ao", "at"],
               ["ae", "ab", "ao"],
@@ -139,12 +155,11 @@ function evaluatesingle(record, row, tolocc)
     beginqd = parsedate(row[KEYBEGINQD])
     endqd = parsedate(row[KEYENDQD])
 
-    
-
     # Wir bilden nicht das Maximum über die Ämter, jedes passende Amt kann zählen
     for occrec in record["aemter"]
         # Betrachte nur passende Ämter in `occupations`.
         occgs = occrec["bezeichnung"]
+        @infiltrate
         rgm = match(rgxocc, occgs)
         rgm == nothing && continue
         

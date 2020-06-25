@@ -79,7 +79,7 @@ Treffer mit einem schlechterem Muster als `matchkey` werden nicht berücksichtig
 
 Beispiel
 
-`"fn vn"`
+`"fn vn"`: Mindestens Familienname und Vorname müssen übereinstimmen.
 """
 function setminmatchkey(matchkey::AbstractString)
     global minscore = QRecord(Dict("muster" => matchkey, "zeitguete" => 0))
@@ -328,9 +328,13 @@ setinputcols() = inputcols
 
 Setze den Namen der Spalte, welche die ID enthält
 
+`setcolnameid()`: Gib den aktuellen Wert aus
+
 Voreinstellung: `:ID`
 """
 setcolnameid(id) = (global inputcols[1] = Symbol(id))
+
+setcolnameid() = inputcols[1]
 
 colid() = (global inputcols; getindex(inputcols::Array{Symbol, 1}, 1))
 
@@ -367,7 +371,6 @@ function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
     return rdt = JSON.parse(rds4parser)
 end
 
-
 """
     reconcile!(df::AbstractDataFrame,
                dfocc::AbstractDataFrame,
@@ -377,12 +380,10 @@ end
 
 Frage das digitale Personenregister nach Name und Ort ab. 
 
-Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz.
-Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz. Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
-Für Testdaten kann eine View auf `df` übergeben werden.
 """
 function reconcile!(df::AbstractDataFrame,
                     dfocc::AbstractDataFrame;
@@ -432,9 +433,10 @@ function reconcile!(df::AbstractDataFrame,
             nbest = 0
             ffound = false
 
-            iep = row[colid()]
+            iep = string(row[colid()])
             # Ämter für row
-            rowocc = Util.rowselect(dfocc, iep, colid())
+            rowsocc = Util.rowselect(dfocc, iep, colid())
+            @infiltrate
             
             if row[:Vorname] != ""   # Bischofseintrag
                 
@@ -451,7 +453,7 @@ function reconcile!(df::AbstractDataFrame,
                 # Trefferliste auszuwerten.
                 
                 # Abfrage nach Name und Bistum
-                places = filter(!ismissing, rowocc[!, :Bistum])
+                places = filter(!ismissing, rowsocc[!, :Bistum])
                 if length(places) == 0
                     places = [""]
                 end
@@ -462,7 +464,7 @@ function reconcile!(df::AbstractDataFrame,
                     dictquery["ort"] = place
 
                     gsres = getGS(URLGSINDEX, dictquery)
-                    append!(records, evaluate!(gsres, row, rowocc, toldateofdeath, toloccupation))
+                    append!(records, evaluate!(gsres, row, rowsocc, toldateofdeath, toloccupation))
                 end
                 if length(records) > 0
                     bestrec, posbest = findmax(records)

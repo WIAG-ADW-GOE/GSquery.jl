@@ -15,12 +15,7 @@ API: http://personendatenbank.germania-sacra.de/api/v1.0/person
 
 [API Beschreibung](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/)
 
-## Übersicht
-
-Das Paket ist zur Verwendung mit [Julia](https://julialang.org/) vorgesehen. Beachte,
-dass beim ersten Aufruf einer Funktion etwas mehr Zeit vergeht, da sie zu diesem
-Zeitpunkt kompiliert wird. Bei jedem weiteren Aufruf ist die Ausführungszeit in der
-Regel sehr kurz.
+Das Paket ist zur Verwendung mit [Julia](https://julialang.org/) vorgesehen. 
 
 ## Inhalt
 
@@ -40,7 +35,7 @@ Pkg.add("[Pfad zu GSquery]/GSQuery")
 
 using DataFrames
 
-dfpersonen = DataFrame(ID = [2522, 4446, 3760, 4609, 3580],
+dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
                        Praefix = ["Graf von", "", "von", "", "von"],
                        Vorname = ["Hartmann", "Herwig", "Johann", "Pilgrim", "Johann"],
                        Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
@@ -75,13 +70,51 @@ dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446
 │ 6   │ 4446       │ Meißen   │ Bischof                │ 1106       │ 1119     │
 │ 7   │ 4609       │ Ölmütz   │ Bischof                │ 1182       │ 1184     │
 
+
+GSquery.setcolnameid(:ID_Bischof)
+
+dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
+
 ```
 
-<!-- Ergebnis erzeugen und auswerten -->
+Frage das digitales Personenregister ab
+```julia
+julia> GSquery.reconcile!(dfpersonengs, dfaemter; nmsg=2)
 
+┌ Info: Level:
+│   minkey = "vn ae ab ao"
+└   minrank = 60
+┌ Info: Gültige Ämter
+│   GSOcc.occupations =
+│    6-element Array{String,1}:
+│     "Bischof"
+│     "Vikar"
+│     "Elekt"
+│     "Administrator"
+│     "Patriarch"
+└     "Metropolit"
+Datensatz: 2
+Datensatz: 4
+Dict{Int64,Int64} with 2 entries:
+  0 => 1
+  1 => 4
+  
+julia> dfpersonengs[!, [:Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :QRang_GS, :GSN1_GS, :Dioezese_GS, :Aemter_GS]]
 
-Alternativ: lies die Daten ein; Beispieldaten: [personen.tsv](./data/personen.tsv), 
-[aemter.tsv](./data/aemter.tsv).
+5×8 DataFrame
+│ Row │ Vorname  │ Familienname │ Sterbedatum │ Qualitaet_GS         │ QRang_GS │ GSN1_GS       │ Dioezese_GS │ Aemter_GS                │
+│     │ String   │ String       │ String      │ String               │ Int64    │ String        │ String      │ String                   │
+├─────┼──────────┼──────────────┼─────────────┼──────────────────────┼──────────┼───────────────┼─────────────┼──────────────────────────┤
+│ 1   │ Hartmann │ Dillingen    │ 1286        │ fn sd vn ae ab ao at │ 1        │ 053-01059-001 │ Augsburg    │ Bischof                  │
+│ 2   │ Herwig   │              │             │ vn ae ab ao at       │ 29       │ 046-03578-001 │ Meißen      │ Bischof                  │
+│ 3   │ Johann   │ Egloffstein  │ 1411        │ fn sd vn ae ab ao at │ 1        │ 059-00935-001 │ Würzburg    │ Bischof, Dompropst       │
+│ 4   │ Pilgrim  │              │             │                      │ 199      │               │             │                          │
+│ 5   │ Johann   │ Sierck       │ 1305        │ fn sd vn ae ab ao at │ 1        │ 029-02358-001 │ Toul        │ Bischof, Bischof, Propst │  
+  
+```
+
+Alternativ: lies die Daten ein; Beispieldaten: [`personen.tsv`](./data/personen.tsv), 
+[`aemter.tsv`](./data/aemter.tsv).
 
 ```julia
 using FileIO
@@ -148,7 +181,7 @@ Personentabelle mit mindestens folgenden Spalten
 * `Familienname`
 * `Sterbedatum`
 
-Beispiel `personen.txt`
+Beispiel [`personen.tsv`](./data/personen.tsv)
 
 Es müssen nicht alle Felder befüllt sein, zumindest aber das Feld `Vorname`.
 
@@ -168,7 +201,7 @@ Es müssen nicht alle Felder befüllt sein, zumindest aber das Feld `Vorname`.
 | 4234 | Johannes |  |  |
 | 4141 | Markward | | |
 
-Beispiel `aemter.txt`
+Beispiel [`aemter.tsv`](./data/aemter.tsv)
 
 | Bistum | Amtsart | Amtsbeginn | Amtsende | ID_Amt | ID |
 | -- | ------- | ------------ | ----------- | --- | --- |
@@ -242,7 +275,9 @@ Voreinstellung: `:ID`
 
 ---
 
-`setminmatchkey(matchkey::AbstractString)`
+```julia
+setminmatchkey(matchkey::AbstractString)
+```
 
 Setze den Parameter für den Mindestwert an Übereinstimmung
 
@@ -252,7 +287,38 @@ Treffer mit einem schlechterem Muster als `matchkey` werden nicht berücksichtig
 
 Beispiel
 
-`"fn vn"`
+`"fn vn"`: Mindestens Familienname und Vorname müssen übereinstimmen.
+
+---
+
+```julia
+GSOcc.setoccupations(occ)
+```
+Setze die Liste der Ämter, die bei der Abfrage in Betracht gezogen werden.
+
+`setoccupations()`: Gib die aktuelle Liste aus.
+
+Beispiel
+
+```julia
+setoccupations(["Pfarrer", "Vikar"])
+```
+
+---
+
+```julia
+GSOcc.setequivalentoccupations(lequivocc)
+
+```
+
+Setze Liste von Zuordnungen für als gleichwertig betrachtete Ämter.
+
+Beispiel
+
+```julia
+GSOcc.setequivalentoccupations(["Gewählter Bischof" => "Elekt", 
+                          "Erwählter Bischof" => "Elekt"])
+```
 
 ---
 
@@ -328,29 +394,12 @@ Für Testdaten kann eine View auf `df` übergeben werden.
 
 ---
 
-```julia
+## Anmerkungen
+Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die 
+die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
+Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
+bearbeitet sind.
 
-```
+Der Typ der ID in der Personentabelle und der Ämtertabelle sollte übereinstimmen,
+z.B. `String`.
 
----
-
-```julia
-
-```
-
----
-
-```julia
-
-```
-
-
-
-
-
-
-
-
-## Einschränkungen
-Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird die
-Abfrageschleife unter Umständen nicht wieder aufgenommen.
