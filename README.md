@@ -2,6 +2,11 @@
 Ergänze Personendaten in Tabellenform um Angaben aus dem digitalen Personenregister
 des Projektes Germania Sacra.
 
+Bewerte dabei die gefundenen Datensätze nach der Übereinstimmung mit Feldern in den Abfragedaten.
+
+Angaben zu Amtsdaten werden nur dann als übereinstimmend gewertet, wenn der Typ des
+Amtes in einer konfigurierbaren Liste von Ämtern vorkommt.
+
 [Projektseite der Germania Sacra](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/)
 
 [Digitales Personenregister](http://germania-sacra-datenbank.uni-goettingen.de/)
@@ -36,10 +41,10 @@ Pkg.add("[Pfad zu GSquery]/GSQuery")
 using DataFrames
 
 dfpersonen = DataFrame(ID = [2522, 4446, 3760, 4609, 3580],
-					   Praefix = ["Graf von", "", "von", "", "von"],
-					   Vorname = ["Hartmann", "Herwig", "Johann", "Pilgrim", "Johann"],
-					   Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
-					   Sterbedatum = ["1286", "", "1411", "", "1305"])
+                       Praefix = ["Graf von", "", "von", "", "von"],
+                       Vorname = ["Hartmann", "Herwig", "Johann", "Pilgrim", "Johann"],
+                       Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
+                       Sterbedatum = ["1286", "", "1411", "", "1305"])
 
 5×5 DataFrame
 │ Row │ ID    │ Praefix  │ Vorname  │ Familienname │ Sterbedatum │
@@ -70,15 +75,14 @@ dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446
 │ 6   │ 4446       │ Meißen   │ Bischof                │ 1106       │ 1119     │
 │ 7   │ 4609       │ Ölmütz   │ Bischof                │ 1182       │ 1184     │
 
-
-
 ```
 
+<!-- Ergebnis erzeugen und auswerten -->
 
 
+Alternativ: lies die Daten ein; Beispieldaten: [personen.tsv](./data/personen.tsv), 
+[aemter.tsv](./data/aemter.tsv).
 
-
-Alternativ: lies die Daten ein
 ```julia
 using FileIO
 using CSVFiles
@@ -126,7 +130,7 @@ dfpersonengs[!, [:ID, :Vorname, :Familienname, :Sterbedatum, :Qualitaet_GS, :QRa
 ```
 
 Die Spalte `Qualitaet_GS` gibt an, wie gut die Übereinstimmung des Treffers mit den
-angegebenen Daten ist. Dabei steht jedes kürzel für ein übereinstimmendes Datenfeld:
+angegebenen Daten ist. Dabei steht jedes Kürzel für ein übereinstimmendes Datenfeld:
 * `fn`: Familiename
 * `vn`: Vorname
 * `sd`: Sterbedatum (Jahr)
