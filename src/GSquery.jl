@@ -86,9 +86,7 @@ function setminmatchkey(matchkey::AbstractString)
     global minscore = QRecord(Dict("muster" => matchkey, "zeitguete" => 0))
 end
 
-function setminmatchkey()
-    return mincore
-end
+setminmatchkey() = minscore
 
 """
     LIMITN
@@ -122,10 +120,7 @@ function setlogpath(logfile::AbstractString)
     end
 end
 
-function setlogpath()
-    global logpath
-    return logpath
-end
+setlogpath() = logpath
 
 global filelog = Logging.NullLogger()
 
@@ -327,7 +322,7 @@ function setinputcols(cols)
     inputcols = Symbol.(cols)
 end
 
-setinputcols() = begin show(inputcols); println() end
+setinputcols() = inputcols
 
 """
     setcolnameid(id)
@@ -339,34 +334,16 @@ Setze den Namen der Spalte, welche die ID enthält
 Voreinstellung: `:ID`
 """
 setcolnameid(id) = (global inputcols[1] = Symbol(id))
-
 setcolnameid() = inputcols[1]
 
 colid() = (global inputcols; getindex(inputcols::Array{Symbol, 1}, 1))
 
-querycols = [:Vorname, :Familienname, :Amtsort]
-
-"""
-    setquerycols(cols)
-
-Setze die Namen der Spalten der Eingabetabelle, die für die Abfrage der Schnittstelle genutzt werden sollen.
-
-`setquerycols()`: Gib die Spaltennamen aus.
-"""
-function setquerycols(cols)
-    global querycols
-    querycols = Symbol.(cols)
-end
-
-setquerycols() = begin show(querycols); println() end
-
-# vorhandene Spalten
-const MATCHCOLS = [:Vorname, :Familienname, :Familiennamenvarianten, :Sterbedatum]
+# Spalten, die vom Programm bewertet werden können.
+const MATCHCOLS = [:Vorname, :Vornamenvarianten, :Familienname, :Familiennamenvarianten, :Sterbedatum]
 const MATCHOCCCOLS = [:Amtsart, :Amtsbeginn, :Amtsende, :Amtsort]
 
 # Funktionen
 import Base.isless
-
 
 function isless(a::QRecord, b::QRecord)
     (Rank.islessinset(a.data["muster"],  b.data["muster"])
@@ -410,28 +387,29 @@ function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
 end
 
 """
-    reconcile!(df::AbstractDataFrame,
-               dfocc::AbstractDataFrame,
+    reconcile!(df,
+               querycols,
+               dfocc;
                nmsg = 40,
                toldateofdeath = 2,
                toloccupation = 2)
 
-Frage das digitale Personenregister nach Name und Ort ab.
-
-Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz. Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Frage das digitale Personenregister nach den Spalten in `querycols` ab.
+Vergleiche die gefundenen Datensätze mit Name und Amtsdaten aus dem Abfragedatensatz.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
 """
-function reconcile!(df::AbstractDataFrame,
-                    dfocc::AbstractDataFrame;
+function reconcile!(df,
+                    querycols,
+                    dfocc;
                     nmsg = 40,
                     toldateofdeath = 2,
                     toloccupation = 2)
 
     global filelog
     global logpath
-    global querycols
 
     if length(Rank.drank) == 0
         Rank.setdrank()
@@ -444,7 +422,7 @@ function reconcile!(df::AbstractDataFrame,
     end
 
     # Prüfe Vergleichsspalten
-    mcols = intersect(MATCHCOLS, Symbol.(names(df)))
+    mcols = intersect(MATCHCOLS, dfcols)
     occmcols = intersect(MATCHOCCCOLS, Symbol.(names(dfocc)))
 
     startid = df[1, colid()]
@@ -485,13 +463,12 @@ function reconcile!(df::AbstractDataFrame,
                 # Ämter für row
                 rowsocc = Util.rowselect(dfocc, currentid, colid())
 
-
                 # Die Abfrage nach Amt müsste mehrfach durchgeführt werden,
-                # weil Ämter sich zum Teil entsprechen. Es erscheint einfacher,
-                # nur nach dem Ort einzuschränken und die allfällige größere
-                # Trefferliste auszuwerten.
+                # weil ein Amt unter verschiedenen Bezeichnungen in der Personendatenbank
+                # erfasst sein kann.
+                # Schränke nur nach dem Ort ein und werte die allfällige größere Trefferliste aus.
 
-                # Abfrage nach Name und Bistum
+                # Abfrage nach Name und Amtsort/Bistum
 
                 dictquery["name"] = if row[:Familienname] == ""
                     row[:Vorname]
@@ -504,18 +481,24 @@ function reconcile!(df::AbstractDataFrame,
                     places = filter(!ismissing, rowsocc[!, :Amtsort])
                 end
 
-                doevaluate(gsres) = evaluate!(gsres, row, rowsocc, toldateofdeath, toloccupation, mcols, occmcols)
+                # Wir fragen für einen Datensatz in `df` mehrmals ab.
+                # Ein Referenzdatensatz kann mehrmals auftauchen.
+                # Eine mehrmalige Prüfung in `evaluate!` wird vermieden.
+                listchecked = String[] 
+                # Argumente für evalutate!
+                evalargs = (listchecked, row, rowsocc, toldateofdeath, toloccupation, mcols, occmcols)
 
                 if length(places) > 0
                     for place in places
                         dictquery["ort"] = place
                         gsres = getGS(URLGSINDEX, dictquery)
-                        append!(records, doevaluate(gsres))
+                        @debug listchecked
+                        append!(records, evaluate!(gsres, evalargs...))
                     end
                 else
                     delete!(dictquery, "ort")
                     gsres = getGS(URLGSINDEX, dictquery)
-                    records = doevaluate(gsres)
+                    records = evaluate!(gsres, evalargs...)
                 end
 
                 if length(records) > 0
@@ -701,13 +684,19 @@ Bewerte die Datensätze in `gsres` anhand der Werte in `row`.
 `mcols`: Spalten zur Person in den Abfragedaten
 `occmcols`: Spalten zum Amt in den Abfragedaten
 """
-function evaluate!(gsres::Dict{String, Any}, row, rowocc, toldod, tolocc, mcols, occmcols)
+function evaluate!(gsres::Dict{String, Any}, listchecked, row, rowocc, toldod, tolocc, mcols, occmcols)
     records = QRecord[]
     nvalid = 0
     matchkey = ""
     sreject = String[]
 
     for record in gsres["records"]
+        idgs = record["person"]["id"]
+        if idgs in listchecked
+            continue
+        else
+            push!(listchecked, idgs)
+        end
         # println(record["preferredName"], ": mk: ", mk, " scdod: ", scdod)
 
         # Die Bewertung wird in `record` in den Feldern `muster` und `zeitguete`
@@ -756,7 +745,7 @@ let
                      * " *((-|bis)[^1-9]*"
                      * "(" * ryear * "))?")
 
-    function matchdod(sdodqd::Union{<:AbstractString, Missing}, sdodcand)
+    function matchdod(sdodqd::Union{<:AbstractString, Missing}, sdodcand, toldod)
         matchkey = ""
         score = 0
         if ismissing(sdodqd) || sdodqd in ("", "(?)", "?")
@@ -788,7 +777,7 @@ let
         return matchkey, score
     end
 
-    function matchdod(dodqd::T, sdodcand) where T<:Real
+    function matchdod(dodqd::T, sdodcand, toldod) where T<:Real
         matchkey = ""
         score = 0
 
@@ -819,7 +808,7 @@ let
     `mcols`: Spalten in den Abfragedaten
     """
     global evaluatedod!
-    function evaluatedod!(record, row, toldod, mcols)
+    function evaluatedod!(record, row, toldod, mcols)::Nothing
         # Für die Bischöfe vor 1198 gibt es oft nur eine Angabe für das
         # Jahrhundert. "[4. Jh.]"
 
@@ -828,14 +817,15 @@ let
         matchkey, score = "", 0
         if :Sterbedatum in mcols
             matchkey, score = matchdod(row[:Sterbedatum],
-                                       record["person"]["sterbedatum"])
+                                       record["person"]["sterbedatum"],
+                                       toldod)
 
             if matchkey != ""
                 push!(record["amuster"], matchkey)
                 record["zeitguete"] = score
             end
         end
-        return matchkey, score
+        return nothing
     end
 
 end
