@@ -114,7 +114,7 @@ julia> dfpersonengs[!, [:ID_Bischof, :Vorname, :Familienname, :Amtsart, :GSN1_GS
 
 ```
 
-Es brauchen nicht alle Felder befüllt zu sein. So fehlt der Familienname in den Datensätzen 2 und 4, außerdm die Amtsart in Datensatz 4. Für diesen Datensatz werden 22 Treffer erhalten, so dass zu prüfen ist, ob der eingetragene Treffer der gewünschte ist.
+Es brauchen nicht alle Felder befüllt zu sein. So fehlt der Familienname in den Datensätzen 2 und 4, außerdm die Amtsart in Datensatz 4. Für diesen Datensatz werden 22 Treffer erhalten, so dass zu prüfen ist, ob der eingetragene Treffer der gewünschte Treffer ist.
 
 In der
 [Dokumentation](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/)
