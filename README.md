@@ -81,47 +81,45 @@ julia> dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
                               Vorname = ["Hartmann", "Herwig", "Johann Philipp", "Pilgrim", "Johann"],
                               Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
                               Sterbedatum = ["1286", "", "1411", "", "1305"],
-                              Amtsart = ["Bischof", "Bischof", "Domherr", "", "Bischof"])
+							  Amtsart = ["Bischof", "Bischof", "Domherr", "", "Bischof"])
 ```
 
 Gib den Feldnamen für die ID bekannt und erzeuge die Ausgabetabelle.
 ``` julia
-julia> GSquery.setcolnameid(:ID_Bischof)
-julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
+GSquery.setcolnameid(:ID_Bischof)
+dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
 ```
 
 Lege die Felder der Abfrage fest und befülle die Ausgabetabelle.
 ``` julia
-julia> fields = (:Vorname => "person.vorname",
+fields = (:Vorname => "person.vorname",
           :Familienname => "person.familienname",
           :Amtsart => "amt.bezeichnung")
-julia> GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
+GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
 
 ```
 
 Befülle die Ausgabetabelle
 ``` julia
-julia> GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
+GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
 ```
 
 Ergebnis
 ``` julia
-julia> dfpersonengs[!, [:ID_Bischof, :Vorname, :Familienname, :Amtsart, :GSN1_GS, :Dioezese_GS, :Aemter_GS, :nTreffer_GS]]
-5×8 DataFrame
-│ Row │ ID_Bischof │ Vorname        │ Familienname │ Amtsart │ GSN1_GS       │ Dioezese_GS │ Aemter_GS                │ nTreffer_GS │
-│     │ Int64      │ String         │ String       │ String  │ String        │ String      │ String                   │ Int64       │
-├─────┼────────────┼────────────────┼──────────────┼─────────┼───────────────┼─────────────┼──────────────────────────┼─────────────┤
-│ 1   │ 2522       │ Hartmann       │ Dillingen    │ Bischof │ 053-01059-001 │ Augsburg    │ Bischof                  │ 1           │
-│ 2   │ 4446       │ Herwig         │              │ Bischof │ 046-03578-001 │ Meißen      │ Bischof                  │ 1           │
-│ 3   │ 3760       │ Johann Philipp │ Egloffstein  │ Domherr │ 052-00595-001 │ Bamberg     │ Domdekan, Domherr        │ 1           │
-│ 4   │ 4609       │ Pilgrim        │              │         │ 010-02218-001 │ Köln        │ Mönch                    │ 22          │
-│ 5   │ 3580       │ Johann         │ Sierck       │ Bischof │ 029-02358-001 │ Toul        │ Bischof, Bischof, Propst │ 1           │
+julia> dfpersonengs[!, [:ID_Bischof, :Vorname, :Familienname, :Qualitaet_GS, :QRang_GS, :GSN1_GS, :Dioezese_GS, :Aemter_GS, :nTreffer_GS]]
+5×9 DataFrame
+│ Row │ ID_Bischof │ Vorname  │ Familienname │ Qualitaet_GS │ QRang_GS │ GSN1_GS       │ Dioezese_GS │ Aemter_GS                │ nTreffer_GS │
+│     │ Int64      │ String   │ String       │ String       │ Int64    │ String        │ String      │ String                   │ Int64       │
+├─────┼────────────┼──────────┼──────────────┼──────────────┼──────────┼───────────────┼─────────────┼──────────────────────────┼─────────────┤
+│ 1   │ 2522       │ Hartmann │ Dillingen    │              │ 199      │ 053-01059-001 │ Augsburg    │ Bischof                  │ 1           │
+│ 2   │ 4446       │ Herwig   │              │              │ 199      │ 046-03578-001 │ Meißen      │ Bischof                  │ 1           │
+│ 3   │ 3760       │ Johann   │ Egloffstein  │              │ 199      │               │             │                          │ 0           │
+│ 4   │ 4609       │ Pilgrim  │              │              │ 199      │ 010-02218-001 │ Köln        │ Mönch                    │ 22          │
+│ 5   │ 3580       │ Johann   │ Sierck       │              │ 199      │ 029-02358-001 │ Toul        │ Bischof, Bischof, Propst │ 1           │
+
 ```
 
-Es müssen nicht alle Felder für die Abfrage befüllt sein. So fehlt in dem Beispiel
-der Familienname für die Datensätze 2 und 4 und für Datensatz 4. Dafür wurden für
-„Pilgrim‟ 22 Treffer erhalten und in diesem Fall wäre zu prüfen, welcher davon der
-gesuchte „Pilgrim‟ ist.
+Die Felder müssen für die Abfrage nicht alle befüllt sein.
 
 In der
 [Dokumentation](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/)
@@ -200,9 +198,10 @@ Gib den Feldnamen für die ID an, über welche die beiden Tabellen verknüpft.
 julia> GSquery.setcolnameid(:ID_Bischof)
 ```
 
-Erzeuge die Ausgabetabelle.
+Erzeuge die Ausgabetabelle. Verwende den Inhalt von `:Bistum` als `:Amtsort`
 ``` julia
 julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
+julia> rename!(dfaemter, :Bistum => :Amtsort)
 ```
 
 Lege die Felder für die Abfrage fest. Frage das digitale Personenregister ab und
