@@ -13,21 +13,30 @@ Liste von Ämtern, die in Betracht gezogen werden.
 
 Beispiel
 
-["Bischof", 
- "Vikar", 
- "Elekt", 
- "Administrator", 
- "Patriarch", 
+["Bischof",
+ "Vikar",
+ "Elekt",
+ "Administrator",
+ "Patriarch",
  "Metropolit"]
 """
 global occupations = ["Bischof", "Vikar", "Elekt", "Administrator", "Patriarch", "Metropolit"]
-regexor(lms::Array{<:AbstractString, 1}) = Regex(join(lms, "|"), "i")
+
+function regexor(lms::Array{<:AbstractString, 1})
+    if length(lms) > 1
+        Regex(join(lms, "|"), "i")
+    else
+        r".+"
+    end
+end
+
 global rgxocc = regexor(occupations)
 
 """
     setoccupations(occ::Vector{<:AbstractString})
-    
+
 Setze die Liste der Ämter, die bei der Abfrage in Betracht gezogen werden.
+Wenn die Liste leer ist, werden alle Ämter in Betracht gezogen.
 
 `setoccupations()`: Gib die aktuelle Liste aus.
 
@@ -64,7 +73,7 @@ Setze Liste von Zuordnungen für als gleichwertig betrachtete Ämter.
 Beispiel
 
 ```julia
-setequivalentoccupations(["Gewählter Bischof" => "Elekt", 
+setequivalentoccupations(["Gewählter Bischof" => "Elekt",
                           "Erwählter Bischof" => "Elekt"])
 ```
 """
@@ -92,15 +101,16 @@ const KEYS = [["ae", "ab", "ao", "at"],
               ["at"],
               []]
 
-# Feldbezeichnungen in den Abfragedaten 
-const KEYDIOCQD = :Bistum
-const KEYTYPEQD = :Amtsart
-const KEYBEGINQD = :Amtsbeginn
-const KEYENDQD = :Amtsende
+# Feldbezeichnungen in den Abfragedaten
+const KEYQDPLACE = :Amtsort
+const KEYQDTYPE = :Amtsart
+const KEYQDBEGIN = :Amtsbeginn
+const KEYQDEND = :Amtsende
 
-const KEYTYPEGS = "bezeichnung"
-const KEYBEGINGS = "von"
-const KEYENDGS = "bis"
+# Feldbezeichnungen in der Personendatenbank
+const KEYGSTYPE = "bezeichnung"
+const KEYGSBEGIN = "von"
+const KEYGSEND = "bis"
 
 
 # Funktionen
@@ -109,39 +119,39 @@ function islesskey(a, b)
 end
 
 """
-    evaluate!(record, dfocc::AbstractDataFrame, tolocc)
+    evaluate!(record, dfocc::AbstractDataFrame, tolocc, occmcols)
 
-Bewerte Daten zu Ämtern. 
+Bewerte Daten zu Ämtern.
 
 `dfocc`: Ämter in Abfragedaten für diese eine Person.
 `tolocc`: Maximal zulässige Abweichung in Start- und Enddatum eines Amtes.
+`occmcols`: Spalten in den Abfragedaten
 """
-function evaluate!(record, dfocc::AbstractDataFrame, tolocc)           
+function evaluate!(record, dfocc::Union{AbstractDataFrame, Nothing}, tolocc, occmcols)
+    if isnothing(dfocc) return end
     maxkey = String[]
     for row in eachrow(dfocc)
-        key = evaluatesingle(record, row, tolocc)
-        if !islesskey(key, maxkey)
+        key = evaluatesingle(record, row, tolocc, occmcols)
+        if islesskey(maxkey, key)
             maxkey = key
         end
     end
     append!(record["amuster"], maxkey)
+    return nothing
 end
 
 """
-    evaluateooc!(record, row, tolocc)
+    evaluatesingle!(record, row, tolocc, occmcols)
 
 Bewerte Daten zum Amt. `row` Zeile einer Ämtertabelle.
 """
-function evaluatesingle(record, row, tolocc)
+function evaluatesingle(record, row, tolocc, occmcols)::Vector{String}
     # Für die Bischöfe vor 1198 gibt es oft nur eine Angabe für das
     # Jahrhundert. "[4. Jh.]"
 
     matchkey = ""
     akey = String[]
-    
-    # ryear = "([0-9]?[0-9]?[0-9]{2})(/[0-9]?[0-9]\\??)?"
-    ryear = "[0-9]?[0-9]?[0-9]{2}"
-    rgxyear = Regex(ryear)
+
 
     ftype = false
     fbegin = false
@@ -149,84 +159,104 @@ function evaluatesingle(record, row, tolocc)
     fplace = false
     score = 0
 
-    typeqd = row[KEYTYPEQD]
-    diocqd = row[KEYDIOCQD]
-    
-    beginqd = parsedate(row[KEYBEGINQD])
-    endqd = parsedate(row[KEYENDQD])
+    typeqd = KEYQDTYPE in occmcols ? row[KEYQDTYPE] : missing
+    diocqd = KEYQDPLACE in occmcols ? row[KEYQDPLACE] : missing
+    beginqd::Union{Int, Missing} = missing
+    if KEYQDBEGIN in occmcols
+        sdate = row[KEYQDBEGIN]
+        if Util.hasdata(sdate)
+            beginqd = parsedate(row[KEYQDBEGIN])
+        end
+    end
 
-    # Wir bilden nicht das Maximum über die Ämter, jedes passende Amt kann zählen
+    endqd::Union{Int, Missing} = missing
+    if KEYQDEND in occmcols
+        sdate = row[KEYQDEND]
+        if Util.hasdata(sdate)
+            endqd = parsedate(row[KEYQDEND])
+        end
+    end
+
+    maxkey = String[]
     for occrec in record["aemter"]
+        key = String[]
         # Betrachte nur passende Ämter in `occupations`.
-        occgs = occrec["bezeichnung"]
-        @infiltrate
+        occgs = occrec[KEYGSTYPE]
         rgm = match(rgxocc, occgs)
         rgm == nothing && continue
-        
+
         fplace = false
         ftype = false
         fbegin = false
         fend = false
 
-        # Amtsort
-        fplace = matchplace(occrec, diocqd)
-
-        # Amtsbeginn
-        fbegin = evaluatedate(occrec[KEYBEGINGS], beginqd, tolocc)
-        
         # Amtsende
-        fend = evaluatedate(occrec[KEYENDGS], endqd, tolocc)
+        if endqd != "" && evaluatedate(occrec[KEYGSEND], endqd, tolocc)
+            push!(key, "ae")
+        end
+        
+        # Amtsbeginn
+        if beginqd != "" && evaluatedate(occrec[KEYGSBEGIN], beginqd, tolocc)
+            push!(key, "ab")
+        end
+        
 
-        record["bischofsamt"] = occrec
-
+        # Amtsort
+        if diocqd != "" && matchplace(occrec, diocqd)
+            push!(key, "ao")
+        end
+        
         # Amtsbezeichnung
-        ftype = matchoccupation(occrec[KEYTYPEGS], typeqd)
-
+        ftype = typeqd != "" && matchoccupation(occgs, typeqd)
+        if ftype
+            push!(key, "at")
+        end        
+        
+        if islesskey(maxkey, key)
+            maxkey = key
+            record["amt"] = occrec
+        end        
     end
 
-    # Das Amtsende wird höher eingestuft als der Beginn
-    fend && push!(akey, "ae")
-    fbegin && push!(akey, "ab")
-    fplace && push!(akey, "ao")
-    ftype && push!(akey, "at")
-
-    return akey
+    return maxkey
 end
 
-"""
-
-Gib `missing` zurück, wenn kein gültiges Datum gefunden werden kann
-"""
-function parsedate(sdate::Union{AbstractString, Missing})
+let
+    global parsedate
     rgxyear = r"[0-9]?[0-9]?[0-9]{2}"
-    valdate = missing
-
-    ismissing(sdate) && return valdate
-
-    sdate in ("", "(?)", "?") && return valdate
     
-    rgm = match(rgxyear, sdate)
-    if rgm == nothing
-        @warn ("Ungültiges Datum in: " * sdate)
-    else
-        valdate = parse(Int, rgm.match)
-    end
+    """
+    
+    Gib `missing` zurück, wenn kein gültiges Datum gefunden werden kann
+    """
+    function parsedate(sdate::Union{AbstractString, Missing})::Union{Int, Nothing}
+        valdate = nothing
+        if ismissing(sdate) return valdate end
+        
+        rgm = match(rgxyear, sdate)
+        if rgm == nothing
+            @warn ("Ungültiges Datum in: " * sdate)
+        else
+            valdate = parse(Int, rgm.match)
+        end
 
-    return valdate
+        return valdate
+    end
 end
 
-function parsedate(sdate::Int)
+function parsedate(sdate::Int)::Int
     sdate
 end
 
 function evaluatedate(sdategs::Union{AbstractString, Missing},
-                      dateqd::Union{Int, Missing}, tolocc)
+                      dateqd::Union{Int, Missing},
+                      tolocc)
     if ismissing(dateqd) return false end
     if ismissing(sdategs) return false end
-    if sdategs == "" return false end
+    if !Util.hasdata(sdategs) return false end
     dategs = parsedate(sdategs)
     if ismissing(dategs) return false end
-    
+
     delta = abs(dategs - dateqd)
     if delta <= tolocc
         return true
@@ -241,7 +271,7 @@ end
 
 Prüfe, ob die Orte in `occrec` zu der Angabe der neuen Quelle passen.
 """
-function matchplace(occrec, diocqd::Union{AbstractString, Missing})    
+function matchplace(occrec, diocqd::Union{AbstractString, Missing})
     placegs = occrec["ort"]
     diocgs = occrec["dioezese"]
     return (Util.checkname(diocqd, placegs)
@@ -304,11 +334,38 @@ function matchoccupation(occgs::AbstractString, occqd::AbstractString)
     for rl in equivrls::Array{Pair{String, String}}
         a = replace(occgs, rl)
         b = replace(occqd, rl)
-        @infiltrate a == b
         Util.checkname(occqd, occgs) && return true
     end
     return false
 
 end
+
+getlastocc(record) = getlastoccinrecord(record["aemter"])
+
+"""
+    getlastoccinrecord(occs)
+
+Gib das Amt mit dem größten Amtsende-Datum zurück
+"""
+function getlastoccinrecord(occs)
+    maxend = 0
+    occend = 0
+    lastocc::Union{eltype(occs), Nothing} = nothing
+    if length(occs) > 0
+        lastocc = occs[1]
+    end    
+    for occ in occs
+        soccend = occ[KEYGSEND]
+        if Util.hasdata(soccend)
+            occend = parsedate(soccend)
+            if occend > maxend
+                maxend = occend
+                lastocc = occ
+            end
+        end
+    end
+    lastocc
+end
+
 
 end # module Occ

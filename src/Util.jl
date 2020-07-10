@@ -13,7 +13,9 @@ Höchster zulässiger Abstand beim Namensvergleich
 """
 const LSTNLEVEL = 0.3
 
-RGXINP = r" ?\([^\)]*\)"
+const RGXINP = r" ?\([^\)]*\)"
+
+hasdata(r) = !ismissing(r) && !(r in ("", "(?)", "?"))
 
 """
     checkname(name::AbstractString, nameref::AbstractString)
@@ -41,19 +43,6 @@ function checkname(name::Union{Missing, AbstractString},
     end    
 end
 
-"""
-    checknamebyparts(name, nameref)
-
-Prüfe ob Namen übereinstimmen: Zerlege sie in eine Liste von Wörten und bilde die
-Schnittmenge.
-"""
-function checknamepyparts(name, nameref)
-   (name == "" || nameref == "") && return false
-    nameelems = splitname(name)
-    namerefelems = splitname(nameref)
-    common = intersect(nameelems, namerefelems)
-    return length(common) > 0
-end
 
 """
     splitname(name::AbstractString)
@@ -108,6 +97,9 @@ oder wo `v` in der Spalte `col` von `df` vorkommt.
 """
 function rowselect(df::AbstractDataFrame, v::Number, col::Symbol)
     # Sieht nicht so aus, ist aber vergleichsweise schnell
+    if eltype(df[!, col]) == String
+        v = string(v)
+    end    
     ix = v .== df[!, col]
     return @view df[ix, :]
 end

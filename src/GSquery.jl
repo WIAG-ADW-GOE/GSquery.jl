@@ -12,7 +12,7 @@
 # https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/
 #
 # Dokumentation
-# ../../README.md
+# ../README.md
 #
 """
     module GSquery
@@ -76,6 +76,7 @@ Setze den Parameter für den Mindestwert an Übereinstimmung.
 `matchkey`: Muster, das noch als Treffer ausgegeben wird.
 
 Treffer mit einem schlechterem Muster als `matchkey` werden nicht berücksichtigt.
+`setminmatchkey()` gibt das aktuelle Muster aus.
 
 Beispiel
 
@@ -85,13 +86,14 @@ function setminmatchkey(matchkey::AbstractString)
     global minscore = QRecord(Dict("muster" => matchkey, "zeitguete" => 0))
 end
 
+setminmatchkey() = minscore
 
 """
     LIMITN
 
 Zahl der Datensätze, die pro Anfrage gelesen werden sollen.
 """
-const LIMITN = 200
+const LIMITN = 300
 
 """
     logpath
@@ -105,9 +107,9 @@ global logpath = ""
 
 Setze den Namen der Datei für Logdaten
 
-Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben. 
+Wenn der Pfad der Logdatei leer ist (""), werden keine Logdaten geschrieben.
 `setlogpath()`: gib den aktuellen Pfad der Logdatei aus.
-""" 
+"""
 function setlogpath(logfile::AbstractString)
     path = splitdir(logfile)[1]
     path == "" && (path = ".")
@@ -118,10 +120,7 @@ function setlogpath(logfile::AbstractString)
     end
 end
 
-function setlogpath()
-    global logpath
-    return logpath
-end
+setlogpath() = logpath
 
 global filelog = Logging.NullLogger()
 
@@ -134,7 +133,6 @@ const GSSTRINGCOLS = [:GSN1_GS,
                       :GSN_GS,
                       :ID_GND_GS,
                       :Qualitaet_GS,
-                      :nTreffer_GS,
                       :Vorname_GS,
                       :Vornamenvarianten_GS,
                       :Namenspraefix_GS,
@@ -143,7 +141,7 @@ const GSSTRINGCOLS = [:GSN1_GS,
                       :Namenszusatz_GS,
                       :Geburtsdatum_GS,
                       :Sterbedatum_GS,
-                      :Amtbischof_GS,
+                      :Amt_GS,
                       :Amtsbeginn_GS,
                       :Amtsende_GS,
                       :Dioezese_GS,
@@ -180,9 +178,9 @@ fileranks = "GSQueryranks.txt"
 """
     setfileofranks(fileranks::AbstractString)
 
-Setze den Dateinamen für die Liste mit Übereinstimmungsmustern. 
+Setze den Dateinamen für die Liste mit Übereinstimmungsmustern.
 
-Wenn die entsprechende Datei nicht vorhanden ist, wird für die Abfrage 
+Wenn die entsprechende Datei nicht vorhanden ist, wird für die Abfrage
 automatisch eine Rangliste von Mustern erstellt.
 
 `setfileofranks()`: Gib den aktuellen Dateinamen aus.
@@ -244,7 +242,7 @@ function setdrank(fileranks)
     return nothing
 end
 
-function setdrank() 
+function setdrank()
     global drank
     drank = Dict(p => rk for (rk, p) in enumerate(makeranklist()))
 end
@@ -279,7 +277,7 @@ function islessinset(a, b; drank=drank)
     if pb == 0
         error("Ungültiger Schlüssel: " * b)
     end
-    
+
     return pb < pa
 end
 
@@ -296,15 +294,18 @@ ranklist() = sort(collect(drank), lt=(a, b) -> a.second < b.second)
 
 end # module Rank
 
+# globale Variablen
+
 inputcols = [:ID,
              :Praefix,
              :Vorname,
              :Familienname,
+             :Familiennamenvarianten,
              :Sterbedatum,
              :Amtsart,
              :Amtsbeginn,
              :Amtsende,
-             :Bistum,
+             :Amtsort,
              :GSN_ID,
              :GND_ID,]
 
@@ -333,17 +334,28 @@ Setze den Namen der Spalte, welche die ID enthält
 Voreinstellung: `:ID`
 """
 setcolnameid(id) = (global inputcols[1] = Symbol(id))
-
 setcolnameid() = inputcols[1]
 
 colid() = (global inputcols; getindex(inputcols::Array{Symbol, 1}, 1))
 
+# Spalten, die vom Programm bewertet werden können.
+const MATCHCOLS = [:Vorname, :Vornamenvarianten, :Familienname, :Familiennamenvarianten, :Sterbedatum]
+const MATCHOCCCOLS = [:Amtsart, :Amtsbeginn, :Amtsende, :Amtsort]
+
+# Funktionen
 import Base.isless
 
 function isless(a::QRecord, b::QRecord)
     (Rank.islessinset(a.data["muster"],  b.data["muster"])
      || (a.data["muster"] == b.data["muster"]
-             && a.data["zeitguete"] < b.data["zeitguete"]))
+         && a.data["zeitguete"] < b.data["zeitguete"]))
+end
+
+import Base.isequal
+
+function isequal(a::QRecord, b::QRecord)
+    (isequal(a.data["muster"],  b.data["muster"])
+     && isequal(a.data["zeitguete"], b.data["zeitguete"]))
 end
 
 
@@ -351,7 +363,7 @@ end
     getGS(url, params::Dict{String, String}; offset = 0, limit = LIMITN, format = "json")
        -> Verzeichnis von Datensätzen; Dict{String, Any}
 
-Stelle eine Anfrage an die Schnittstelle der Germania Sacra. 
+Stelle eine Anfrage an die Schnittstelle der Germania Sacra.
 `params`: Paare der Form "Feldname" => "Wert"
 
 ## Beispiele
@@ -360,11 +372,12 @@ getGS(URLGS, Dict("person.vorname" => "Christoph", "person.nachname" => "Berg"))
 gstGS(URLGSINDEX, Dict("name" => "Georg Anton Rodenstein")
 """
 function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
-    params["format"] = format
-    params["offset"] = string(0)
-    params["limit"] = string(limit)
-    
-    rq = HTTP.request("GET", url, query=params, readtimeout = 30, retries = 5);
+    qparams = copy(params)
+    qparams["format"] = format
+    qparams["offset"] = string(0)
+    qparams["limit"] = string(limit)
+
+    rq = HTTP.request("GET", url, query=qparams, readtimeout = 30, retries = 5);
 
     rds = String(rq.body);
     rds4parser = replace(rds, r"\n *" => "");
@@ -372,21 +385,36 @@ function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
 end
 
 """
-    reconcile!(df::AbstractDataFrame,
-               dfocc::AbstractDataFrame,
+    reconcile!(df,
+               querycols,
+               dfocc;
                nmsg = 40,
                toldateofdeath = 2,
                toloccupation = 2)
 
-Frage das digitale Personenregister nach Name und Ort ab. 
-
-Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz. Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Frage das digitale Personenregister nach den Spalten in `querycols` ab.
+Vergleiche die gefundenen Datensätze mit Name und Amtsdaten aus dem Abfragedatensatz.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
+
+    reconcile!(df, fields; nmsg = 40)
+
+Frage das digitale Personenregister nach den Feldern in `fields` ab.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem erstbesten Treffer.
+Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
+
+`fields` ordnet jeder Spalte in `df` einen `Feldnamen` im Personenregister zu.
+
+``` julia
+fields = Dict(:Vorname => "person.vorname", :Familienname => "person.nachname")
+fields = ((:ID_GND => "person.gndnummer"),)
+```
 """
-function reconcile!(df::AbstractDataFrame,
-                    dfocc::AbstractDataFrame;
+function reconcile!(df,
+                    querycols,
+                    dfocc;
                     nmsg = 40,
                     toldateofdeath = 2,
                     toloccupation = 2)
@@ -397,12 +425,16 @@ function reconcile!(df::AbstractDataFrame,
     if length(Rank.drank) == 0
         Rank.setdrank()
     end
-    
+
     dfcols = Symbol.(names(df))
     if !(colid() in dfcols)
         error("Die Eingabetabelle enthält keine passende Spalte für die ID (ist: `$(colid())`). "
               * "Siehe `setcolnameid`")
     end
+
+    # Prüfe Vergleichsspalten
+    mcols = intersect(MATCHCOLS, dfcols)
+    occmcols = intersect(MATCHOCCCOLS, Symbol.(names(dfocc)))
 
     startid = df[1, colid()]
     minkey = minscore["muster"]
@@ -420,6 +452,7 @@ function reconcile!(df::AbstractDataFrame,
 
     @info "Level:" minkey minrank
     @info "Gültige Ämter" GSOcc.occupations
+    @info "Abfragespalten" querycols
 
     dictquery = Dict("name" => "",
                      "ort" => "")
@@ -427,121 +460,127 @@ function reconcile!(df::AbstractDataFrame,
     dbest = Dict{Int, Int}()
     irow = 1
     for row in eachrow(df)
-        try
-            records = QRecord[]
-            irow % nmsg == 0 && println("Datensatz: ", irow)
-            nbest = 0
-            ffound = false
+        irow % nmsg == 0 && println("Datensatz: ", irow)
+        records = QRecord[]
+        nbest = 0
+        ffound = false
+        currentid = row[colid()]
 
-            iep = string(row[colid()])
-            # Ämter für row
-            rowsocc = Util.rowselect(dfocc, iep, colid())
-            @infiltrate
-            
-            if row[:Vorname] != ""   # Bischofseintrag
-                
-                dictquery["name"] = if row[:Familienname] == ""
-                    row[:Vorname]
-                else
-                    row[:Vorname] * " " * row[:Familienname]
-                end
-                
-                familyname = row[:Familienname] # darf auch leer sein
+        if row[:Vorname] == ""
+            # kein gültiger Eintrag
+            @warn "Kein Vorname für (keine Abfrage): " currentid
+        else
+            try
+
                 # Die Abfrage nach Amt müsste mehrfach durchgeführt werden,
-                # weil Ämter sich zum Teil entsprechen. Es erscheint einfacher,
-                # nur nach dem Ort einzuschränken und die allfällige größere
-                # Trefferliste auszuwerten.
-                
-                # Abfrage nach Name und Bistum
-                places = filter(!ismissing, rowsocc[!, :Bistum])
-                if length(places) == 0
-                    places = [""]
-                end
-                
-                for place in places
-                    # Die Schnittstelle akzeptiert auch eine Abfrage, wenn
-                    # `place` leer ist.
-                    dictquery["ort"] = place
+                # weil ein Amt unter verschiedenen Bezeichnungen in der Personendatenbank
+                # erfasst sein kann.
+                # Schränke nur nach dem Ort ein und werte die allfällige größere Trefferliste aus.
 
-                    gsres = getGS(URLGSINDEX, dictquery)
-                    append!(records, evaluate!(gsres, row, rowsocc, toldateofdeath, toloccupation))
+                # Abfrage nach Name und Amtsort/Bistum
+
+                dictquery["name"] = if :Familienname in querycols && row[:Familienname] != ""
+                    row[:Vorname] * " " * row[:Familienname]
+                else
+                    row[:Vorname]
                 end
+
+                # Ämter für row
+                rowsocc = Util.rowselect(dfocc, currentid, colid())
+
+                places = String[]
+                if :Amtsort in querycols
+                    places = filter(!ismissing, rowsocc[!, :Amtsort])
+                end
+
+                # Wir fragen für einen Datensatz in `df` mehrmals ab.
+                # Ein Referenzdatensatz kann mehrmals auftauchen.
+                # Eine mehrmalige Prüfung in `evaluate!` wird vermieden.
+                listchecked = String[]
+                # Argumente für evalutate!
+                evalargs = (listchecked, row, rowsocc, toldateofdeath, toloccupation, mcols, occmcols)
+
+                if length(places) > 0
+                    for place in places
+                        dictquery["ort"] = place
+                        gsres = getGS(URLGSINDEX, dictquery)
+                        @debug listchecked
+                        append!(records, evaluate!(gsres, evalargs...))
+                    end
+                else
+                    delete!(dictquery, "ort")
+                    gsres = getGS(URLGSINDEX, dictquery)
+                    records = evaluate!(gsres, evalargs...)
+                end
+
                 if length(records) > 0
                     bestrec, posbest = findmax(records)
-                    if bestrec >= minscore
+                    if !isless(bestrec, minscore)
                         nbest = writematch!(row, bestrec, records)
                     else
                         with_logger(filelog) do
                             bestkey = bestrec["muster"]
-                            @info "abgelehnt" iep  bestkey
+                            @info "abgelehnt" currentid  bestkey
                         end
                     end
                 end
                 dbest[nbest] = get(dbest, nbest, 0) + 1
 
-            else
-                @warn "Kein Vorname für: (keine Abfrage) " row[colid()]
-            end
-            irow += 1
         catch
-            @warn "Fehler bei Datensatz: " row[colid()]
+            @warn "Fehler bei Datensatz: " currentid
             rethrow()
+            end
         end
+        irow += 1
     end
 
     if logpath != ""
         flush(logio)
         close(logio)
     end
-    
-    dbest
+    return dbest
 end
 
+# reconcilebyname!
+# obsolet: Kann über das Argument querycols in reconcile erreicht werden.
+# gelöscht 2020-07-09
 
+reconcile!(df::AbstractDataFrame, field::Pair{Symbol, String}; nmsg = 40) = reconcile!(df, tuple(field), nmsg)
 
-"""
-    reconcilebyname!(df::AbstractDataFrame,
-                     nmsg = 40,
-                     toldateofdeath = 5,
-                     toloccupation = 5,
-                     limit = 500)
+function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
+    coltokey = Dict(col => kgs for (col, kgs) in fields)
 
-Frage GS nacheinander nach Name ab.
-Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
-`toloccupation` als Toleranz für Amtsdaten
-Für Testdaten kann eine View auf `df` übergeben werden.
-"""
-function reconcilebyname!(df::AbstractDataFrame;
-                          nmsg = 40,
-                          toldateofdeath = 5,
-                          toloccupation = 5,
-                          limit = 500)
-
-    dbest = Dict{Int, Int}()
-    irow = 1
-
-    dictquery = Dict("name" => "")
-    
+    dictquery = Dict(p.second => "" for p in coltokey)
+    irow = 0
     for row in eachrow(df)
-        irow % nmsg == 0 && println("Datensatz: ", irow)
-        nbest = 0
-        if row[:Vorname] != ""   # Bischofseintrag
-            if row[:Familienname] == ""
-                dictquery["name"] = row[:Vorname]
+        (irow += 1) % nmsg == 0 && println("Datensatz: ", irow)
+
+        for (col, kgs) in coltokey
+            qv = row[col]
+            if !Util.hasdata(qv)
+                delete!(dictquery, kgs)
             else
-                dictquery["name"] = row[:Vorname] * " " * row[:Familienname]
+                dictquery[kgs] = qv
             end
-            gsres = getGS(URLGSINDEX, dictquery, limit = limit)
-            records = evaluate!(gsres, row, toldateofdeath, toloccupation)
-            # Es werden nur die Muster in `drank` berücksichtigt!
-            nbest = selectmatches(row, records) # mit Ausgabe
-            dbest[nbest] = get(dbest, nbest, 0) + 1
         end
-        irow += 1
+        if isempty(dictquery) continue end
+
+        gsres = getGS(URLGS, dictquery)
+
+        records = gsres["records"]
+        n = length(records)
+        if n > 0
+            theone = records[1]
+            lastocc = GSOcc.getlastocc(theone)
+            if !isnothing(lastocc)
+                theone["amt"] = lastocc
+            end
+            writerow!(row, theone, n)
+        end
     end
 
-    dbest
 end
+
 
 
 """
@@ -551,9 +590,9 @@ end
                     toldateofdeath = 6,
                     tolendofoccupation = 11))
 
-Frage GS anhand des Werts in der Spalte `colgnd` ab. 
+Frage GS anhand des Werts in der Spalte `colgnd` ab.
 
-Vergleichswert im digitalen Personenregister: 
+Vergleichswert im digitalen Personenregister:
 """
 function reconcilebyGND!(df::AbstractDataFrame;
                          colgnd = :ID_GND,
@@ -622,54 +661,46 @@ end
 
 
 
-function selectmatches(row, records)
-    nbest = 0
-    ffound = false
-    length(records) == 0 && return nbest, ffound
-
-    bestrec, posbest = findmax(records)
-    if bestrec >= minscore
-        writerow!(row, bestrec)
-        nbest = count(isequal(bestrec), records)
-        if nbest == 1
-            ffound = true
-        else
-            with_logger(filelog) do
-                @info "mehrere Treffer" row[colid()] bestrec["muster"]
-            end
-        end
-    end
-    return nbest, ffound
-end
-
-
 """
-     evaluate!(gsres::Dict{String, Any}, row, toldod, tolocc)
+     evaluate!(gsres::Dict{String, Any}, listchecked, row, rowsocc, toldod, tolocc, mcols, occmcols)
 
-Bewerte die Datensätze in `gsres` anhand der Werte in `row`
+Bewerte die Datensätze in `gsres` anhand der Werte in `row` und in den Zeilen `rowsocc`.
+`listchecked`: Liste von IDs für Personen, die für `row` schon einmal geprüft wurden.
+`toldod`: Toleranz Sterbedatum
+`tolocc`: Toleranz Amtsbeginn, Amtsende
+`mcols`: Vergleichspalten zur Person in den Abfragedaten
+`occmcols`: Vergleichsspalten zum Amt in den Abfragedaten
 """
-function evaluate!(gsres::Dict{String, Any}, row, rowocc, toldod, tolocc)
+function evaluate!(gsres::Dict{String, Any}, listchecked, row, rowsocc, toldod, tolocc, mcols, occmcols)
     records = QRecord[]
     nvalid = 0
     matchkey = ""
     sreject = String[]
 
     for record in gsres["records"]
+        idgs = record["person"]["id"]
+        if idgs in listchecked
+            continue
+        else
+            push!(listchecked, idgs)
+        end
         # println(record["preferredName"], ": mk: ", mk, " scdod: ", scdod)
 
         # Die Bewertung wird in `record` in den Feldern `muster` und `zeitguete`
         # abgelegt.
         record["amuster"] = String[]
         record["zeitguete"] = 0
-        evaluategnfn!(record, row)
-        evaluatedod!(record, row, toldod)
+        evaluategnfn!(record, row, mcols)
+        evaluatedod!(record, row, toldod, mcols)
+
         # Wenn die Sterbedaten vorhanden sind, aber außerhalb der Toleranz
         # liegen, lehne den Datensatz ab.
         if record["zeitguete"] == -1
             push!(sreject, join(record["amuster"], " "))
             continue
         end
-        GSOcc.evaluate!(record, rowocc, tolocc)
+
+        GSOcc.evaluate!(record, rowsocc, tolocc, occmcols)
 
         # Sortiere die Elemente des Musters entsprechend der Reihenfolge in
         # SLISTKEY
@@ -692,26 +723,16 @@ function evaluate!(gsres::Dict{String, Any}, row, rowocc, toldod, tolocc)
     return records
 end
 
+# Umgebung für evaltuatedod!
+let
 
-"""
-    evaluatedod!(record, row, toldod)
+    ryear = "[0-9]?[0-9]?[0-9]{2}"
+    rgxyear = Regex(ryear)
+    rgxdobad = Regex("(" * ryear * ")"
+                     * " *((-|bis)[^1-9]*"
+                     * "(" * ryear * "))?")
 
-Verwende `toldod` für die Bewertung des Wertes in `:Sterbedatum`.
-Wenn beide Daten vorhanden sind, aber außerhalb der Toleranz liegen,
-schreibe in das Feld "zeitguete" der Wert -1.
-"""
-function evaluatedod!(record, row, toldod)
-    # Für die Bischöfe vor 1198 gibt es oft nur eine Angabe für das
-    # Jahrhundert. "[4. Jh.]"
-
-    # rgxjh = r"([1-9][0-9]?)\. Jh" # wird im Moment nicht weiter verfolgt
-
-    function matchdod(sdodqd::Union{<:AbstractString, Missing}, sdodcand)
-        ryear = "[0-9]?[0-9]?[0-9]{2}"
-        rgxyear = Regex(ryear)
-        rgxdobad = Regex("(" * ryear * ")"
-                         * " *((-|bis)[^1-9]*"
-                         * "(" * ryear * "))?")
+    function matchdod(sdodqd::Union{<:AbstractString, Missing}, sdodcand, toldod)
         matchkey = ""
         score = 0
         if ismissing(sdodqd) || sdodqd in ("", "(?)", "?")
@@ -724,7 +745,7 @@ function evaluatedod!(record, row, toldod)
             return matchkey, score
         end
         dodqd = parse(Int, rgm.match)
-        
+
         sdodcand == "" && return matchkey, score
         rgm = match(rgxyear, sdodcand)
         if rgm == nothing
@@ -743,15 +764,10 @@ function evaluatedod!(record, row, toldod)
         return matchkey, score
     end
 
-    function matchdod(dodqd::T, sdodcand) where T<:Real
-        ryear = "[0-9]?[0-9]?[0-9]{2}"
-        rgxyear = Regex(ryear)
-        rgxdobad = Regex("(" * ryear * ")"
-                         * " *((-|bis)[^1-9]*"
-                         * "(" * ryear * "))?")
+    function matchdod(dodqd::T, sdodcand, toldod) where T<:Real
         matchkey = ""
         score = 0
-        
+
         sdodcand == "" && return matchkey, score
         rgm = match(rgxyear, sdodcand)
         if rgm == nothing
@@ -770,49 +786,79 @@ function evaluatedod!(record, row, toldod)
         return matchkey, score
     end
 
-    sdodqd = row[:Sterbedatum]
-    sdodgs = record["person"]["sterbedatum"]
+    """
+        evaluatedod!(record, row, toldod, mcols)
 
-    matchkey, score = matchdod(sdodqd, sdodgs)
+    Verwende `toldod` für die Bewertung des Wertes in `:Sterbedatum`.
+    Wenn beide Daten vorhanden sind, aber außerhalb der Toleranz liegen,
+    schreibe in das Feld "zeitguete" der Wert -1.
+    `mcols`: Spalten in den Abfragedaten
+    """
+    global evaluatedod!
+    function evaluatedod!(record, row, toldod, mcols)::Nothing
+        # Für die Bischöfe vor 1198 gibt es oft nur eine Angabe für das
+        # Jahrhundert. "[4. Jh.]"
 
-    if matchkey != ""
-        push!(record["amuster"], matchkey)
-        record["zeitguete"] = score
+        # rgxjh = r"([1-9][0-9]?)\. Jh" # wird im Moment nicht weiter verfolgt
+
+        matchkey, score = "", 0
+        if :Sterbedatum in mcols
+            matchkey, score = matchdod(row[:Sterbedatum],
+                                       record["person"]["sterbedatum"],
+                                       toldod)
+
+            if matchkey != ""
+                push!(record["amuster"], matchkey)
+                record["zeitguete"] = score
+            end
+        end
+        return nothing
     end
-    return matchkey, score
+
 end
 
-
-
 """
+    evaluategnfn!(record, row, mcols)
 
 Suche nach Familienname und oder Vorname
+`qcol`: Spalten in den Abfragedaten
 """
-function evaluategnfn!(record, row)
-    ffn = false
-    fgn = false
-    # Falls es keinen Familiennamen gibt, wird von `checkkey` zurückgegeben
-    familyname = row[:Familienname]
-    givenname = row[:Vorname]
-    # Die Felder in der GS-Antwort sind immer vorhanden
+function evaluategnfn!(record, row, mcols)
 
-    matchkey = String[]
+    stripsplit(a) = strip.(split(a, r",|;"))
 
-    ffn |= Util.checkname(familyname, record["person"]["familienname"])
-    fgn |= Util.checkname(givenname, record["person"]["vorname"])
-    if ffn && fgn
-        matchkey = ["fn", "vn"]
-    else
-        ffn |= Util.checkname(familyname, record["person"]["familiennamenvarianten"])
-        fgn |= Util.checkname(givenname, record["person"]["vornamenvarianten"])
-        if ffn && fgn
-            matchkey = ["fn", "vn"]
-        elseif ffn
-            matchkey = ["fn"]
-        elseif fgn
-            matchkey = ["vn"]
+    fnqd = [row[:Familienname]]
+    if :Familiennamenvarianten in mcols
+        fnqdalt = row[:Familiennamenvarianten]
+        if Util.hasdata(fnqdalt)
+            append!(fnqd, stripsplit(fnqdalt))
         end
     end
+
+    fngs = [record["person"]["familienname"]]
+    fngsalt = record["person"]["familiennamenvarianten"]
+    if Util.hasdata(fngsalt)
+        append!(fngs, stripsplit(fngsalt))
+    end
+
+    gnqd = [row[:Vorname]]
+    if :Vornamenvarianten in mcols
+        gnqdalt = row[:Vornamenvarianten]
+        if Util.hasdata(gnqdalt)
+            append!(gnqd, stripsplit(gsqdalt))
+        end
+    end
+
+    gngs = [record["person"]["vorname"]]
+    gngsalt = record["person"]["vornamenvarianten"]
+    if Util.hasdata(gngsalt)
+        append!(gngs, stripsplit(gngsalt))
+    end
+
+    ffn = findcommonelement(Util.checkname, fnqd, fngs)
+    fgn = findcommonelement(Util.checkname, gnqd, gngs)
+
+    matchkey = ["fn", "vn"][[ffn, fgn]]
 
     if matchkey != String[]
         append!(record["amuster"], matchkey)
@@ -820,12 +866,26 @@ function evaluategnfn!(record, row)
     return matchkey
 end
 
-function writematch!(row, bestrec, records)
-    if bestrec <= minscore
-        @error ("Datensatz soll nicht geschrieben werden: " * string(row[colid()]))
+"""
+    findcommenelement(f, nqd, ngs)
+
+Prüfe, ob `nqd` und `ngs` mindestens ein übereinstimmendes Elementepaar haben.
+"""
+function findcommonelement(f, nqd, ngs)::Bool
+    fcommon = false
+    for cnqd in nqd, cngs in ngs
+        if f(cnqd, cngs)
+            fcommon = true
+            break
+        end
     end
-    writerow!(row, bestrec)
+    return fcommon
+end
+
+function writematch!(row, bestrec, records)
+
     nbest = count(isequal(bestrec), records)
+    writerow!(row, bestrec, nbest)
     if nbest > 1
         with_logger(filelog) do
             @info "mehrere Treffer:" row[colid()] bestrec["muster"]
@@ -834,15 +894,16 @@ function writematch!(row, bestrec, records)
     nbest
 end
 
-"""
-    writerow!(row, record::QRecord)
+writerow!(row, record::QRecord, nbest = 1) = writerow!(row, record.data, nbest)
 
-`record` ist ein Datensatz aus der Liste "records" einer GS-Abfrage.
 """
-function writerow!(row, record::QRecord)
-    rdt = record.data
+    writerow!(row, node, nbest = 1)
+
+`node` ist ein Datensatz aus der Liste "records" einer GS-Abfrage.
+"""
+function writerow!(row, node::Dict{String, Any}, nbest = 1)
     agsn = String[]
-    for item in rdt["item.gsn"]
+    for item in node["item.gsn"]
         push!(agsn, item["nummer"])
     end
 
@@ -851,33 +912,36 @@ function writerow!(row, record::QRecord)
 
     row[:GSN1_GS] = gsn1
     row[:GSN_GS] = join(agsn, ", ")
-    row[:ID_GND_GS] = rdt["person"]["gndnummer"]
-    row[:Qualitaet_GS] = rdt["muster"]
-    row[:QRang_GS] = Rank.getrank(rdt["muster"])
-    row[:nTreffer_GS] = "1" # sonst würde die Funktion nicht so aufgerufen
-    row[:Vorname_GS] = rdt["person"]["vorname"]
-    row[:Vornamenvarianten_GS] = rdt["person"]["vornamenvarianten"]
-    row[:Namenspraefix_GS] = rdt["person"]["namenspraefix"]
-    row[:Familienname_GS] = rdt["person"]["familienname"]
-    row[:Familiennamenvarianten_GS] = rdt["person"]["familiennamenvarianten"]
-    row[:Namenszusatz_GS] = rdt["person"]["namenszusatz"]
-    row[:Geburtsdatum_GS] = rdt["person"]["geburtsdatum"]
-    row[:Sterbedatum_GS] = rdt["person"]["sterbedatum"]
-    if haskey(rdt, "bischofsamt")
-        row[:Amtbischof_GS] = rdt["bischofsamt"]["bezeichnung"]
-        row[:Amtsbeginn_GS] = rdt["bischofsamt"]["von"]
-        row[:Amtsende_GS] = rdt["bischofsamt"]["bis"]
-        row[:Dioezese_GS] = rdt["bischofsamt"]["dioezese"]
+    row[:ID_GND_GS] = node["person"]["gndnummer"]
+    if haskey(node, "muster")
+        matchkey = node["muster"]
+        row[:Qualitaet_GS] = matchkey
+        row[:QRang_GS] = Rank.getrank(matchkey)
     end
-    row[:Aemter_GS] = getocc(rdt)[1]
+    row[:nTreffer_GS] = nbest
+    row[:Vorname_GS] = node["person"]["vorname"]
+    row[:Vornamenvarianten_GS] = node["person"]["vornamenvarianten"]
+    row[:Namenspraefix_GS] = node["person"]["namenspraefix"]
+    row[:Familienname_GS] = node["person"]["familienname"]
+    row[:Familiennamenvarianten_GS] = node["person"]["familiennamenvarianten"]
+    row[:Namenszusatz_GS] = node["person"]["namenszusatz"]
+    row[:Geburtsdatum_GS] = node["person"]["geburtsdatum"]
+    row[:Sterbedatum_GS] = node["person"]["sterbedatum"]
+    if haskey(node, "amt") # eines der gesuchten Ämter
+        row[:Amt_GS] = node["amt"]["bezeichnung"]
+        row[:Amtsbeginn_GS] = node["amt"]["von"]
+        row[:Amtsende_GS] = node["amt"]["bis"]
+        row[:Dioezese_GS] = node["amt"]["dioezese"]
+    end
+    row[:Aemter_GS] = getocc(node)[1]
     # Ämter gibt es in GS mehrere
 end
 
-function getocc(rdt)
+function getocc(node)
     aocc = String[]
     aoccplace = String[]
-    if haskey(rdt, "aemter")
-        for occrec in rdt["aemter"]
+    if haskey(node, "aemter")
+        for occrec in node["aemter"]
             push!(aocc, occrec["bezeichnung"])
             push!(aoccplace, occrec["dioezese"])
         end
@@ -899,6 +963,7 @@ function makeGSDataFrame(df::AbstractDataFrame)
     for col in GSSTRINGCOLS
         dfgs[!, col] .= ""
     end
+    dfgs[!, :nTreffer_GS] .= 0
     dfgs[!, :QRang_GS] .= RANKMAX
     dfgs
 end
@@ -999,49 +1064,6 @@ function deltaID(ref, gs)
     else
         ref == gs ? (return "t") : (return "f")
     end
-end
-
-"""
-    readgsrecord(rdt)
-
-Lies daten aus `rdt` in ein Verzeichnis(Dict).
-"""
-function readgsrecord(rdt)
-    agsn = String[]
-    items = rdt["item.gsn"]
-    for item in items
-        push!(agsn, item["nummer"])
-    end
-
-    # Finde die erste GSN
-    gsn1 = (pdelim = (findfirst(',', agsn[1]))) == nothing ? agsn[1] : agsn[1][1:(pdelim - 1)]
-
-    row = Dict{Symbol, String}()
-    row[:GSN1_GS] = gsn1
-    row[:GSN_GS] = join(agsn, ", ")
-    row[:ID_GND_GS] = rdt["person"]["gndnummer"]
-    row[:Vorname_GS] = rdt["person"]["vorname"]
-    row[:Vornamenvarianten_GS] = rdt["person"]["vornamenvarianten"]
-    row[:Namenspraefix_GS] = rdt["person"]["namenspraefix"]
-    row[:Familienname_GS] = rdt["person"]["familienname"]
-    row[:Familiennamenvarianten_GS] = rdt["person"]["familiennamenvarianten"]
-    row[:Namenszusatz_GS] = rdt["person"]["namenszusatz"]
-    row[:Geburtsdatum_GS] = rdt["person"]["geburtsdatum"]
-    row[:Sterbedatum_GS] = rdt["person"]["sterbedatum"]
-    if haskey(rdt, "bischofsamt")
-        row[:Amtbischof_GS] = rdt["bischofsamt"]["bezeichnung"]
-        row[:Amtsbeginn_GS] = rdt["bischofsamt"]["von"]
-        row[:Amtsende_GS] = rdt["bischofsamt"]["bis"]
-        row[:Dioezese_GS] = rdt["bischofsamt"]["dioezese"]
-    else
-        row[:Amtbischof_GS] = ""
-        row[:Amtsbeginn_GS] = ""
-        row[:Amtsende_GS] = ""
-        row[:Dioezese_GS] = ""
-    end
-    row[:Aemter_GS], row[:Dioezesen_GS] = getocc(rdt)
-    # Ämter gibt es in GS mehrere
-    return row
 end
 
 
