@@ -399,7 +399,7 @@ Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
 
-    reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
+    reconcile!(df, fields; nmsg = 40)
 
 Frage das digitale Personenregister nach den Feldern in `fields` ab.
 Ergänze `df` für jeden Datensatz mit den Daten aus dem erstbesten Treffer.
@@ -489,14 +489,14 @@ function reconcile!(df,
                 rowsocc = Util.rowselect(dfocc, currentid, colid())
 
                 places = String[]
-                if :Amtsort in querycols                   
+                if :Amtsort in querycols
                     places = filter(!ismissing, rowsocc[!, :Amtsort])
                 end
 
                 # Wir fragen für einen Datensatz in `df` mehrmals ab.
                 # Ein Referenzdatensatz kann mehrmals auftauchen.
                 # Eine mehrmalige Prüfung in `evaluate!` wird vermieden.
-                listchecked = String[] 
+                listchecked = String[]
                 # Argumente für evalutate!
                 evalargs = (listchecked, row, rowsocc, toldateofdeath, toloccupation, mcols, occmcols)
 
@@ -563,7 +563,6 @@ function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
                 dictquery[kgs] = qv
             end
         end
-        @infiltrate
         if isempty(dictquery) continue end
 
         gsres = getGS(URLGS, dictquery)
@@ -579,7 +578,7 @@ function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
             writerow!(row, theone, n)
         end
     end
-    
+
 end
 
 
@@ -896,7 +895,7 @@ function writematch!(row, bestrec, records)
 end
 
 writerow!(row, record::QRecord, nbest = 1) = writerow!(row, record.data, nbest)
-        
+
 """
     writerow!(row, node, nbest = 1)
 
@@ -910,7 +909,7 @@ function writerow!(row, node::Dict{String, Any}, nbest = 1)
 
     # Finde die erste GSN
     gsn1 = (pdelim = (findfirst(',', agsn[1]))) == nothing ? agsn[1] : agsn[1][1:(pdelim - 1)]
-    
+
     row[:GSN1_GS] = gsn1
     row[:GSN_GS] = join(agsn, ", ")
     row[:ID_GND_GS] = node["person"]["gndnummer"]

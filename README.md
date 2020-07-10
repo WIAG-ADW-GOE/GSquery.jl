@@ -2,10 +2,32 @@
 Ergänze Personendaten in Tabellenform um Angaben aus dem digitalen Personenregister
 des Projektes Germania Sacra.
 
-Bewerte dabei die gefundenen Datensätze nach der Übereinstimmung mit Feldern in den Abfragedaten.
+Das Personenregister kann in zwei verschiednen Modi abgefragt werden. Im ersten Modus
+gibt die Benutzerin bestimmte Felder an und `GSquery` liest Daten aus dem
+Personenregister aus, wenn die Suche mindestens einen Treffer ergab.
+Im zweiten Modus fragt `GSquery` das Personenregister nach vorgegebenen
+Namensbestandteilen oder dem Amtsort an. 
+Für jeden Datensatz in den
+Anfragedaten bewertet `GSquery` die vom Personenregister erhaltene Trefferliste.
+Folgende Feldnamen in den Anfragedaten werden
+berücksichtigt, wenn sie vorhanden sind. 
 
-Angaben zu Amtsdaten werden nur dann als übereinstimmend gewertet, wenn der Typ des
-Amtes in einer konfigurierbaren Liste von Ämtern vorkommt.
+* Vorname
+* Vornamenvarianten
+* Familienname
+* Familiennamenvarianten
+* Sterbedatum
+* Amtsart
+* Amtsbeginn
+* Amtsende
+* Amtsort
+
+So wird einerseits erreicht, dass jeweils
+der beste Treffer oder ein bester Treffer ausgegeben wird, andererseits kann die
+Trefferliste bewertet und gegebenenfalls gefiltert werden. 
+Die Benutzerin kann aber auch schon von vornherein über ein Mindestkriterium einen
+Filter festlegen, und so Treffer ausschließen, die diesem Mindestkriterium nicht
+entsprechen.
 
 [Projektseite der Germania Sacra](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/)
 
@@ -34,11 +56,97 @@ Installiere das Paket, z.B. mit
 ``` julia
 julia> using Pkg
 julia> Pkg.add("[Pfad zu GSquery]/GSQuery")
+julia> using GSquery
 
 julia> using DataFrames
 ```
+### Abgleich über bestimmte Felder
+Die Benutzerin gibt an, wie die Felder in den Abfragedaten auf die Felder im
+digitalen Personenregister abgebildet werden sollen.
 
+Beispiele
+``` julia
+(:Nachname => "person.familienname",
+ :Amtsart => "amt.bezeichnung")
+ 
+(:GND_ID => "person.gndnummer",)	
+
+```
+
+#### Beispielabfrage
 Lege Abfragedaten fest.
+``` julia
+julia> dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
+                              Praefix = ["Graf von", "", "von", "", "von"],
+                              Vorname = ["Hartmann", "Herwig", "Johann Philipp", "Pilgrim", "Johann"],
+                              Familienname = ["Dillingen", "", "Egloffstein", "", "Sierck"],
+                              Sterbedatum = ["1286", "", "1411", "", "1305"],
+                              Amtsart = ["Bischof", "Bischof", "Domherr", "", "Bischof"])
+```
+
+Gib den Feldnamen für die ID bekannt und erzeuge die Ausgabetabelle.
+``` julia
+julia> GSquery.setcolnameid(:ID_Bischof)
+julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
+```
+
+Lege die Felder der Abfrage fest und befülle die Ausgabetabelle.
+``` julia
+julia> fields = (:Vorname => "person.vorname",
+          :Familienname => "person.familienname",
+          :Amtsart => "amt.bezeichnung")
+julia> GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
+
+```
+
+Befülle die Ausgabetabelle
+``` julia
+julia> GSquery.reconcile!(dfpersonengs, fields, nmsg = 2)
+```
+
+Ergebnis
+``` julia
+julia> dfpersonengs[!, [:ID_Bischof, :Vorname, :Familienname, :Amtsart, :GSN1_GS, :Dioezese_GS, :Aemter_GS, :nTreffer_GS]]
+5×8 DataFrame
+│ Row │ ID_Bischof │ Vorname        │ Familienname │ Amtsart │ GSN1_GS       │ Dioezese_GS │ Aemter_GS                │ nTreffer_GS │
+│     │ Int64      │ String         │ String       │ String  │ String        │ String      │ String                   │ Int64       │
+├─────┼────────────┼────────────────┼──────────────┼─────────┼───────────────┼─────────────┼──────────────────────────┼─────────────┤
+│ 1   │ 2522       │ Hartmann       │ Dillingen    │ Bischof │ 053-01059-001 │ Augsburg    │ Bischof                  │ 1           │
+│ 2   │ 4446       │ Herwig         │              │ Bischof │ 046-03578-001 │ Meißen      │ Bischof                  │ 1           │
+│ 3   │ 3760       │ Johann Philipp │ Egloffstein  │ Domherr │ 052-00595-001 │ Bamberg     │ Domdekan, Domherr        │ 1           │
+│ 4   │ 4609       │ Pilgrim        │              │         │ 010-02218-001 │ Köln        │ Mönch                    │ 22          │
+│ 5   │ 3580       │ Johann         │ Sierck       │ Bischof │ 029-02358-001 │ Toul        │ Bischof, Bischof, Propst │ 1           │
+```
+
+Es müssen nicht alle Felder für die Abfrage befüllt sein. So fehlt in dem Beispiel
+der Familienname für die Datensätze 2 und 4 und für Datensatz 4. Dafür wurden für
+„Pilgrim‟ 22 Treffer erhalten und in diesem Fall wäre zu prüfen, welcher davon der
+gesuchte „Pilgrim‟ ist.
+
+In der
+[Dokumentation](https://adw-goe.de/forschung/forschungsprojekte-akademienprogramm/germania-sacra/schnittstellen-und-linked-data/)
+des digitalen Personenregisters sind die Felder beschrieben, die abgefragt werden
+können.
+
+### Abgleich mit Bewertung der Ergebnisse
+Die Benutzerin gibt eine Liste von Feldbezeichnungen an, die als Suchparameter an das
+digitale Personenregister gesendet werden. Typischerweise ist diese Liste eine Kombination aus
+Namensbestandteilen und Amtsort.
+
+Beispiele:
+```julia
+[:Vorname, :Familienname]
+[:Vorname, :Familienname, :Amtsort]
+[:Familienname. :Amtsort]
+```
+
+
+Es kann eine Liste mit Amtsbezeichnungen festgelegt werden. In diesem Fall werden
+Angaben zu Amtsdaten nur dann als übereinstimmend gewertet, wenn die
+Amtsbezeichnung aus der Personendatenbank in dieser Liste vorkommt. 
+
+#### Beispielabfrage
+Lege Abfragedaten fest als Tabelle mit Personendaten
 ``` julia
 julia> dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
                        Praefix = ["Graf von", "", "von", "", "von"],
@@ -55,6 +163,10 @@ julia> dfpersonen = DataFrame(ID_Bischof = [2522, 4446, 3760, 4609, 3580],
 │ 3   │ 3760  │ von      │ Johann   │ Egloffstein  │ 1411        │
 │ 4   │ 4609  │          │ Pilgrim  │              │             │
 │ 5   │ 3580  │ von      │ Johann   │ Sierck       │ 1305        │
+```
+
+... und zugehörigen Amtsdaten. Verwende den Inhalt von `:Bistum` als `:Amtsort`.
+``` julia
 
 
 julia> dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760", "4446", "4609"],
@@ -74,10 +186,16 @@ julia> dfaemter = DataFrame(ID_Bischof = ["2522", "3580", "3580", "3760", "3760"
 │ 5   │ 3760       │ Würzburg │ Bischof                │ 1400       │ 1411     │
 │ 6   │ 4446       │ Meißen   │ Bischof                │ 1106       │ 1119     │
 │ 7   │ 4609       │ Ölmütz   │ Bischof                │ 1182       │ 1184     │
+
+julia> rename!(dfaemter, :Bistum => :Amtsort)
 ```
 
-Gib den Namen der Spalte an, in der die ID gespeichert ist und welche die beiden
-Tabellen verknüpft.
+Lege die Liste gültiger Ämter fest.
+``` julia
+julia> GSquery.setoccupations(["Bischof", "Vikar", "Elekt", "Administrator", "Patriarch", "Metropolit"])
+```
+
+Gib den Feldnamen für die ID an, über welche die beiden Tabellen verknüpft.
 ``` julia
 julia> GSquery.setcolnameid(:ID_Bischof)
 ```
@@ -87,9 +205,11 @@ Erzeuge die Ausgabetabelle.
 julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen);
 ```
 
-Frage das digitale Personenregister ab und zeige das Ergebnis an.
+Lege die Felder für die Abfrage fest. Frage das digitale Personenregister ab und
+zeige das Ergebnis an.
 ```julia
-julia> GSquery.reconcile!(dfpersonengs, dfaemter; nmsg=2)
+julia> qcols = [:Familienname, :Vorname, :Amtsort]
+julia> GSquery.reconcile!(dfpersonengs, qcols, dfaemter; nmsg=2)
 
 ┌ Info: Level:
 │   minkey = "vn ae ab ao"
@@ -133,6 +253,7 @@ angegebenen Daten ist. Dabei steht jedes Kürzel für ein übereinstimmendes Dat
 * `ae`: Amtsende
 * `ao`: Amtsort (Bistum)
 
+#### Beispielabfrage mit Daten aus einer Datei
 Alternativ: lies die Daten aus Dateien ein; Beispieldaten: [`personen.tsv`](./data/personen.tsv), 
 [`aemter.tsv`](./data/aemter.tsv).
 
@@ -156,7 +277,8 @@ julia> dfpersonengs = GSquery.makeGSDataFrame(dfpersonen)
 
 Befülle die Ausgabetabelle
 ```julia
-julia> GSquery.reconcile!(dfpersonengs, dfaemter)
+julia> qcols = [:Vorname, :Familiename, :Amtsort]
+julia> GSquery.reconcile!(dfpersonengs, qcols, dfaemter)
 ```
 
 Zeige das Ergebnis an
@@ -188,11 +310,11 @@ julia> save("personen_gs.tsv", dfpersonengs)
 
 ## Eingangsdaten
 
-Personentabelle mit mindestens folgenden Spalten
+Personentabelle mit folgenden Spalten
 * `ID` (Der Name der Spalte, in der die ID erwartet wird, kann mit `setcolnameid` gesetzt werden)
 * `Vorname`
 * `Familienname`
-* `Sterbedatum`
+* `Sterbedatum` (optional)
 
 Beispiel [`personen.tsv`](./data/personen.tsv)
 
@@ -214,9 +336,17 @@ Es müssen nicht alle Felder befüllt sein, zumindest aber das Feld `Vorname`.
 | 4234 | Johannes |  |  |
 | 4141 | Markward | | |
 
+
+Ämtertabelle mit mindestens einer der folgenden Spalten
+* `ID` (ID für die Person, Referenz auf die Personentabelle
+* `Amtsart`
+* `Amtsbeginn`
+* `Amtsende`
+* `Amtsort`
+
 Beispiel [`aemter.tsv`](./data/aemter.tsv)
 
-| Bistum | Amtsart | Amtsbeginn | Amtsende | ID_Amt | ID |
+| Amtsort | Amtsart | Amtsbeginn | Amtsende | ID_Amt | ID |
 | -- | ------- | ------------ | ----------- | --- | --- |
 | Augsburg | Bischof | 1248 | 1286 | 5 | 2522 |
 | Paderborn | Elekt | 1277 | 1279 | 3586 | 3273 |
@@ -236,16 +366,12 @@ Beispiel [`aemter.tsv`](./data/aemter.tsv)
 | Lübeck | Bischof | 1559 | 1561 | 21447 | 20796 |
 
 
-Ämtertabelle mit mindestens folgenden Spalten
-* `ID` (ID für die Person, Referenz auf die Personentabelle
-* `Amtsart`
-* `Amtsbeginn`
-* `Amtsende`
-* `Bistum`
-
 ## Ausgabedaten
 
-Die Ausgabe ist eine erweiterte Personentabelle mit mindestens folgenden Spalten.
+Die Ausgabe ist eine erweiterte Personentabelle.
+
+Beispiel für die Liste der Spalten
+
 * `ID_Bischof`
 * `Praefix`
 * `Vorname`
@@ -304,8 +430,9 @@ Beispiel
 
 ---
 
+Im Untermodul GSOcc:
 ```julia
-GSOcc.setoccupations(occ)
+setoccupations(occ)
 ```
 Setze die Liste der Ämter, die bei der Abfrage in Betracht gezogen werden.
 
@@ -316,11 +443,14 @@ Beispiel
 ```julia
 setoccupations(["Pfarrer", "Vikar"])
 ```
+Es werden nur Datensätze aus der Personendatenbank berücksichtigt, in denen eines der
+Ämter gefunden wird. Wenn die Liste leer ist, entfällt diese Einschränkung.
 
 ---
 
+Im Untermodul GSOcc:
 ```julia
-GSOcc.setequivalentoccupations(lequivocc)
+setequivalentoccupations(lequivocc)
 
 ```
 
@@ -389,27 +519,39 @@ Setze die Namen der Spalten der Eingabetabelle, die in die Ausgabetabelle übern
 ## Funktionen
 
 ```julia
-reconcile!(df::AbstractDataFrame,
-           dfocc::AbstractDataFrame,
+reconcile!(df,
+           querycols,
+           dfocc,
            nmsg = 40,
            toldateofdeath = 2,
            toloccupation = 2)
 ```
-Frage das digitale Personenregister nach Name und Ort ab. 
-
-Vergleiche die gefundenen Datensätze mit Name, Ort und Amt aus dem Abfragedatensatz. Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
+Frage das digitale Personenregister nach den Spalten in `querycols` ab.
+Vergleiche die gefundenen Datensätze mit Name und Amtsdaten aus dem Abfragedatensatz.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
 
+``` julia
+reconcile!(df, fields; nmsg = 40)
+```
+Frage das digitale Personenregister nach den Feldern in `fields` ab.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem erstbesten Treffer.
+Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
+
+`fields` ordnet jeder Spalte in `df` einen `Feldnamen` im Personenregister zu.
+
 ---
 
 ## Verschiedenes
+Das Paket ist [Julia](https://julialang.org/) geschrieben. Die Sprache zeichnet sich
+durch sehr kurze Rechenzeiten aus. Vor der ersten Ausführung wird aber für jede Funktion
+Maschinencode erzeugt, was einige Sekunden dauern kann. Da dieser Prozess aber nur
+einmal notwendig ist, entfällt er bei jedem weiteren Aufruf der Funktion.
+
 Wenn die Verbindung zum Server unterbrochen wird und wieder zustandekommt, wird
 die Abfrageschleife unter Umständen nicht wieder aufgenommen. Schleife mit
 Ctrl-C abbrechen und neu starten oder mit dem Teil der Daten aufrufen, die noch nicht
 bearbeitet sind.
-
-Der Typ der ID in der Personentabelle und der Ämtertabelle sollte übereinstimmen,
-z.B. `String`.
 
