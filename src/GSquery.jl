@@ -359,9 +359,6 @@ function isequal(a::QRecord, b::QRecord)
 end
 
 
-hasdata(r) = !ismissing(r) && !isequal(r, "")
-
-
 """
     getGS(url, params::Dict{String, String}; offset = 0, limit = LIMITN, format = "json")
        -> Verzeichnis von Datensätzen; Dict{String, Any}
@@ -375,11 +372,12 @@ getGS(URLGS, Dict("person.vorname" => "Christoph", "person.nachname" => "Berg"))
 gstGS(URLGSINDEX, Dict("name" => "Georg Anton Rodenstein")
 """
 function getGS(url, params; offset = 0, limit = LIMITN, format = "json")
-    params["format"] = format
-    params["offset"] = string(0)
-    params["limit"] = string(limit)
+    qparams = copy(params)
+    qparams["format"] = format
+    qparams["offset"] = string(0)
+    qparams["limit"] = string(limit)
 
-    rq = HTTP.request("GET", url, query=params, readtimeout = 30, retries = 5);
+    rq = HTTP.request("GET", url, query=qparams, readtimeout = 30, retries = 5);
 
     rds = String(rq.body);
     rds4parser = replace(rds, r"\n *" => "");
@@ -400,6 +398,19 @@ Ergänze `df` für jeden Datensatz mit den Daten aus dem besten Treffer.
 Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
 Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
 `toloccupation` als Toleranz für Amtsdaten.
+
+    reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
+
+Frage das digitale Personenregister nach den Feldern in `fields` ab.
+Ergänze `df` für jeden Datensatz mit den Daten aus dem erstbesten Treffer.
+Gib nach einer Zahl von `nmsg` Datensätzen eine Fortschrittsmeldung aus.
+
+`fields` ordnet jeder Spalte in `df` einen `Feldnamen` im Personenregister zu.
+
+``` julia
+fields = Dict(:Vorname => "person.vorname", :Familienname => "person.nachname")
+fields = ((:ID_GND => "person.gndnummer"),)
+```
 """
 function reconcile!(df,
                     querycols,
@@ -460,8 +471,6 @@ function reconcile!(df,
             @warn "Kein Vorname für (keine Abfrage): " currentid
         else
             try
-                # Ämter für row
-                rowsocc = Util.rowselect(dfocc, currentid, colid())
 
                 # Die Abfrage nach Amt müsste mehrfach durchgeführt werden,
                 # weil ein Amt unter verschiedenen Bezeichnungen in der Personendatenbank
@@ -470,14 +479,17 @@ function reconcile!(df,
 
                 # Abfrage nach Name und Amtsort/Bistum
 
-                dictquery["name"] = if row[:Familienname] == ""
-                    row[:Vorname]
-                else
+                dictquery["name"] = if :Familienname in querycols && row[:Familienname] != ""
                     row[:Vorname] * " " * row[:Familienname]
+                else
+                    row[:Vorname]
                 end
 
+                # Ämter für row
+                rowsocc = Util.rowselect(dfocc, currentid, colid())
+
                 places = String[]
-                if :Amtsort in querycols
+                if :Amtsort in querycols                   
                     places = filter(!ismissing, rowsocc[!, :Amtsort])
                 end
 
@@ -529,51 +541,47 @@ function reconcile!(df,
     return dbest
 end
 
+# reconcilebyname!
+# obsolet: Kann über das Argument querycols in reconcile erreicht werden.
+# gelöscht 2020-07-09
 
+reconcile!(df::AbstractDataFrame, field::Pair{Symbol, String}; nmsg = 40) = reconcile!(df, tuple(field), nmsg)
 
-"""
-    reconcilebyname!(df::AbstractDataFrame,
-                     nmsg = 40,
-                     toldateofdeath = 5,
-                     toloccupation = 5,
-                     limit = 500)
+function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
+    coltokey = Dict(col => kgs for (col, kgs) in fields)
 
-Frage GS nacheinander nach Name ab.
-Verwende `toldateofdeath` als Toleranz für das Sterbedatum und
-`toloccupation` als Toleranz für Amtsdaten
-Für Testdaten kann eine View auf `df` übergeben werden.
-"""
-function reconcilebyname!(df::AbstractDataFrame;
-                          nmsg = 40,
-                          toldateofdeath = 5,
-                          toloccupation = 5,
-                          limit = 500)
-
-    dbest = Dict{Int, Int}()
-    irow = 1
-
-    dictquery = Dict("name" => "")
-
+    dictquery = Dict(p.second => "" for p in coltokey)
+    irow = 0
     for row in eachrow(df)
-        irow % nmsg == 0 && println("Datensatz: ", irow)
-        nbest = 0
-        if row[:Vorname] != ""   # Bischofseintrag
-            if row[:Familienname] == ""
-                dictquery["name"] = row[:Vorname]
-            else
-                dictquery["name"] = row[:Vorname] * " " * row[:Familienname]
-            end
-            gsres = getGS(URLGSINDEX, dictquery, limit = limit)
-            records = evaluate!(gsres, row, toldateofdeath, toloccupation)
-            # Es werden nur die Muster in `drank` berücksichtigt!
-            nbest = selectmatches(row, records) # mit Ausgabe
-            dbest[nbest] = get(dbest, nbest, 0) + 1
-        end
-        irow += 1
-    end
+        (irow += 1) % nmsg == 0 && println("Datensatz: ", irow)
 
-    dbest
+        for (col, kgs) in coltokey
+            qv = row[col]
+            if !Util.hasdata(qv)
+                delete!(dictquery, kgs)
+            else
+                dictquery[kgs] = qv
+            end
+        end
+        @infiltrate
+        if isempty(dictquery) continue end
+
+        gsres = getGS(URLGS, dictquery)
+
+        records = gsres["records"]
+        n = length(records)
+        if n > 0
+            theone = records[1]
+            lastocc = GSOcc.getlastocc(theone)
+            if !isnothing(lastocc)
+                theone["amt"] = lastocc
+            end
+            writerow!(row, theone, n)
+        end
+    end
+    
 end
+
 
 
 """
@@ -654,37 +662,17 @@ end
 
 
 
-function selectmatches(row, records)
-    nbest = 0
-    ffound = false
-    length(records) == 0 && return nbest, ffound
-
-    bestrec, posbest = findmax(records)
-    if bestrec >= minscore
-        writerow!(row, bestrec)
-        nbest = count(isequal(bestrec), records)
-        if nbest == 1
-            ffound = true
-        else
-            with_logger(filelog) do
-                @info "mehrere Treffer" row[colid()] bestrec["muster"]
-            end
-        end
-    end
-    return nbest, ffound
-end
-
-
 """
-     evaluate!(gsres::Dict{String, Any}, row, toldod, tolocc, mcols, occmcols)
+     evaluate!(gsres::Dict{String, Any}, listchecked, row, rowsocc, toldod, tolocc, mcols, occmcols)
 
-Bewerte die Datensätze in `gsres` anhand der Werte in `row`.
+Bewerte die Datensätze in `gsres` anhand der Werte in `row` und in den Zeilen `rowsocc`.
+`listchecked`: Liste von IDs für Personen, die für `row` schon einmal geprüft wurden.
 `toldod`: Toleranz Sterbedatum
 `tolocc`: Toleranz Amtsbeginn, Amtsende
-`mcols`: Spalten zur Person in den Abfragedaten
-`occmcols`: Spalten zum Amt in den Abfragedaten
+`mcols`: Vergleichspalten zur Person in den Abfragedaten
+`occmcols`: Vergleichsspalten zum Amt in den Abfragedaten
 """
-function evaluate!(gsres::Dict{String, Any}, listchecked, row, rowocc, toldod, tolocc, mcols, occmcols)
+function evaluate!(gsres::Dict{String, Any}, listchecked, row, rowsocc, toldod, tolocc, mcols, occmcols)
     records = QRecord[]
     nvalid = 0
     matchkey = ""
@@ -713,7 +701,7 @@ function evaluate!(gsres::Dict{String, Any}, listchecked, row, rowocc, toldod, t
             continue
         end
 
-        GSOcc.evaluate!(record, rowocc, tolocc, occmcols)
+        GSOcc.evaluate!(record, rowsocc, tolocc, occmcols)
 
         # Sortiere die Elemente des Musters entsprechend der Reihenfolge in
         # SLISTKEY
@@ -843,28 +831,28 @@ function evaluategnfn!(record, row, mcols)
     fnqd = [row[:Familienname]]
     if :Familiennamenvarianten in mcols
         fnqdalt = row[:Familiennamenvarianten]
-        if hasdata(fnqdalt)
+        if Util.hasdata(fnqdalt)
             append!(fnqd, stripsplit(fnqdalt))
         end
     end
 
     fngs = [record["person"]["familienname"]]
     fngsalt = record["person"]["familiennamenvarianten"]
-    if hasdata(fngsalt)
+    if Util.hasdata(fngsalt)
         append!(fngs, stripsplit(fngsalt))
     end
 
     gnqd = [row[:Vorname]]
     if :Vornamenvarianten in mcols
         gnqdalt = row[:Vornamenvarianten]
-        if hasdata(gnqdalt)
+        if Util.hasdata(gnqdalt)
             append!(gnqd, stripsplit(gsqdalt))
         end
     end
 
     gngs = [record["person"]["vorname"]]
     gngsalt = record["person"]["vornamenvarianten"]
-    if hasdata(gngsalt)
+    if Util.hasdata(gngsalt)
         append!(gngs, stripsplit(gngsalt))
     end
 
@@ -907,50 +895,54 @@ function writematch!(row, bestrec, records)
     nbest
 end
 
+writerow!(row, record::QRecord, nbest = 1) = writerow!(row, record.data, nbest)
+        
 """
-    writerow!(row, record::QRecord)
+    writerow!(row, node, nbest = 1)
 
-`record` ist ein Datensatz aus der Liste "records" einer GS-Abfrage.
+`node` ist ein Datensatz aus der Liste "records" einer GS-Abfrage.
 """
-function writerow!(row, record::QRecord, nbest = 1)
-    rdt = record.data
+function writerow!(row, node::Dict{String, Any}, nbest = 1)
     agsn = String[]
-    for item in rdt["item.gsn"]
+    for item in node["item.gsn"]
         push!(agsn, item["nummer"])
     end
 
     # Finde die erste GSN
     gsn1 = (pdelim = (findfirst(',', agsn[1]))) == nothing ? agsn[1] : agsn[1][1:(pdelim - 1)]
-
+    
     row[:GSN1_GS] = gsn1
     row[:GSN_GS] = join(agsn, ", ")
-    row[:ID_GND_GS] = rdt["person"]["gndnummer"]
-    row[:Qualitaet_GS] = rdt["muster"]
-    row[:QRang_GS] = Rank.getrank(rdt["muster"])
-    row[:nTreffer_GS] = nbest
-    row[:Vorname_GS] = rdt["person"]["vorname"]
-    row[:Vornamenvarianten_GS] = rdt["person"]["vornamenvarianten"]
-    row[:Namenspraefix_GS] = rdt["person"]["namenspraefix"]
-    row[:Familienname_GS] = rdt["person"]["familienname"]
-    row[:Familiennamenvarianten_GS] = rdt["person"]["familiennamenvarianten"]
-    row[:Namenszusatz_GS] = rdt["person"]["namenszusatz"]
-    row[:Geburtsdatum_GS] = rdt["person"]["geburtsdatum"]
-    row[:Sterbedatum_GS] = rdt["person"]["sterbedatum"]
-    if haskey(rdt, "amt") # eines der gesuchten Ämter
-        row[:Amt_GS] = rdt["amt"]["bezeichnung"]
-        row[:Amtsbeginn_GS] = rdt["amt"]["von"]
-        row[:Amtsende_GS] = rdt["amt"]["bis"]
-        row[:Dioezese_GS] = rdt["amt"]["dioezese"]
+    row[:ID_GND_GS] = node["person"]["gndnummer"]
+    if haskey(node, "muster")
+        matchkey = node["muster"]
+        row[:Qualitaet_GS] = matchkey
+        row[:QRang_GS] = Rank.getrank(matchkey)
     end
-    row[:Aemter_GS] = getocc(rdt)[1]
+    row[:nTreffer_GS] = nbest
+    row[:Vorname_GS] = node["person"]["vorname"]
+    row[:Vornamenvarianten_GS] = node["person"]["vornamenvarianten"]
+    row[:Namenspraefix_GS] = node["person"]["namenspraefix"]
+    row[:Familienname_GS] = node["person"]["familienname"]
+    row[:Familiennamenvarianten_GS] = node["person"]["familiennamenvarianten"]
+    row[:Namenszusatz_GS] = node["person"]["namenszusatz"]
+    row[:Geburtsdatum_GS] = node["person"]["geburtsdatum"]
+    row[:Sterbedatum_GS] = node["person"]["sterbedatum"]
+    if haskey(node, "amt") # eines der gesuchten Ämter
+        row[:Amt_GS] = node["amt"]["bezeichnung"]
+        row[:Amtsbeginn_GS] = node["amt"]["von"]
+        row[:Amtsende_GS] = node["amt"]["bis"]
+        row[:Dioezese_GS] = node["amt"]["dioezese"]
+    end
+    row[:Aemter_GS] = getocc(node)[1]
     # Ämter gibt es in GS mehrere
 end
 
-function getocc(rdt)
+function getocc(node)
     aocc = String[]
     aoccplace = String[]
-    if haskey(rdt, "aemter")
-        for occrec in rdt["aemter"]
+    if haskey(node, "aemter")
+        for occrec in node["aemter"]
             push!(aocc, occrec["bezeichnung"])
             push!(aoccplace, occrec["dioezese"])
         end
