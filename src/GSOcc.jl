@@ -191,31 +191,31 @@ function evaluatesingle(record, row, tolocc, occmcols)::Vector{String}
         fend = false
 
         # Amtsende
-        if endqd != "" && evaluatedate(occrec[KEYGSEND], endqd, tolocc)
+        if !ismissing(endqd) && endqd != "" && evaluatedate(occrec[KEYGSEND], endqd, tolocc)
             push!(key, "ae")
         end
-        
+
         # Amtsbeginn
-        if beginqd != "" && evaluatedate(occrec[KEYGSBEGIN], beginqd, tolocc)
+        if !ismissing(beginqd) && beginqd != "" && evaluatedate(occrec[KEYGSBEGIN], beginqd, tolocc)
             push!(key, "ab")
         end
-        
+
 
         # Amtsort
-        if diocqd != "" && matchplace(occrec, diocqd)
+        if !ismissing(diocqd) && diocqd != "" && matchplace(occrec, diocqd)
             push!(key, "ao")
         end
-        
+
         # Amtsbezeichnung
-        ftype = typeqd != "" && matchoccupation(occgs, typeqd)
+        ftype = !ismissing(typeqd) && typeqd != "" && matchoccupation(occgs, typeqd)
         if ftype
             push!(key, "at")
-        end        
-        
+        end
+
         if islesskey(maxkey, key)
             maxkey = key
             record["amt"] = occrec
-        end        
+        end
     end
 
     return maxkey
@@ -224,15 +224,15 @@ end
 let
     global parsedate
     rgxyear = r"[0-9]?[0-9]?[0-9]{2}"
-    
+
     """
-    
-    Gib `missing` zurück, wenn kein gültiges Datum gefunden werden kann
+
+    Gib `nothing` zurück, wenn kein gültiges Datum gefunden werden kann
     """
-    function parsedate(sdate::Union{AbstractString, Missing})::Union{Int, Nothing}
-        valdate = nothing
+    function parsedate(sdate::Union{AbstractString, Missing})::Union{Int, Missing}
+        valdate = missing
         if ismissing(sdate) return valdate end
-        
+
         rgm = match(rgxyear, sdate)
         if rgm == nothing
             @warn ("Ungültiges Datum in: " * sdate)
@@ -251,7 +251,7 @@ end
 function evaluatedate(sdategs::Union{AbstractString, Missing},
                       dateqd::Union{Int, Missing},
                       tolocc)
-    if ismissing(dateqd) return false end
+    if ismissing(dateqd) || isnothing(dateqd) return false end
     if ismissing(sdategs) return false end
     if !Util.hasdata(sdategs) return false end
     dategs = parsedate(sdategs)
@@ -353,7 +353,7 @@ function getlastoccinrecord(occs)
     lastocc::Union{eltype(occs), Nothing} = nothing
     if length(occs) > 0
         lastocc = occs[1]
-    end    
+    end
     for occ in occs
         soccend = occ[KEYGSEND]
         if Util.hasdata(soccend)

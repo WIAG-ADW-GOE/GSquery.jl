@@ -15,7 +15,7 @@ const LSTNLEVEL = 0.3
 
 const RGXINP = r" ?\([^\)]*\)"
 
-hasdata(r) = !ismissing(r) && !(r in ("", "(?)", "?"))
+hasdata(r) = !isnothing(r) && !ismissing(r) && !(r in ("", "(?)", "?"))
 
 """
     checkname(name::AbstractString, nameref::AbstractString)
@@ -26,13 +26,13 @@ function checkname(name::Union{Missing, AbstractString},
                    nameref::Union{Missing, AbstractString})::Bool
     if ismissing(name) || ismissing(nameref) || "" in (name, nameref)
         return false
-    elseif name == nameref # Performance 
+    elseif name == nameref # Performance
         return true
-    else     
+    else
         # entferne Klammerausdrücke
         name = replace(name, RGXINP => "")
         nameref = replace(nameref, RGXINP => "")
-        
+
         ld = levenshtein(name, nameref)
         # if ld > 0 && ld < 0.5 && FLOG
         #     global iolog
@@ -40,7 +40,7 @@ function checkname(name::Union{Missing, AbstractString},
         # end
         # println(name, "\t", nameref, "\t", ld)
         return ld < LSTNLEVEL
-    end    
+    end
 end
 
 
@@ -99,7 +99,7 @@ function rowselect(df::AbstractDataFrame, v::Number, col::Symbol)
     # Sieht nicht so aus, ist aber vergleichsweise schnell
     if eltype(df[!, col]) == String
         v = string(v)
-    end    
+    end
     ix = v .== df[!, col]
     return @view df[ix, :]
 end

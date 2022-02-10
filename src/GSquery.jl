@@ -225,9 +225,8 @@ drank = Dict{String, Int}()
 """
     setdrank(fileranks)
 
-Lies eine Liste mit Übereinstimmungsmustern aus `fileranks`.
-
-`setdrank()` erzeugt eine Standardversion der Liste von Übereinstimmungsmustern.
+Lies eine Liste mit Übereinstimmungsmustern aus `fileranks`, falls vorhanden.
+Erzeuge anderenfalls eine Standardversion der Liste von Übereinstimmungsmustern.
 """
 function setdrank(fileranks)
     global drank
@@ -330,6 +329,8 @@ setinputcols() = inputcols
 Setze den Namen der Spalte, welche die ID enthält
 
 `setcolnameid()`: Gib den aktuellen Wert aus
+
+Der Spaltenname muss der gleiche für Personen und Ämter sein, z.B. 'ID_Domherr'.
 
 Voreinstellung: `:ID`
 """
@@ -457,6 +458,7 @@ function reconcile!(df,
     dictquery = Dict("name" => "",
                      "ort" => "")
 
+    # dbest: Histogramm über die Zahl der jeweils besten Treffer.
     dbest = Dict{Int, Int}()
     irow = 1
     for row in eachrow(df)
@@ -466,7 +468,7 @@ function reconcile!(df,
         ffound = false
         currentid = row[colid()]
 
-        if row[:Vorname] == ""
+        if ismissing(row[:Vorname]) || row[:Vorname] == ""
             # kein gültiger Eintrag
             @warn "Kein Vorname für (keine Abfrage): " currentid
         else
@@ -516,6 +518,8 @@ function reconcile!(df,
                 if length(records) > 0
                     bestrec, posbest = findmax(records)
                     if !isless(bestrec, minscore)
+                        # nbest: Zahl der Treffer in GS, die zu einer gleichen besten
+                        # Bewertung führen.
                         nbest = writematch!(row, bestrec, records)
                     else
                         with_logger(filelog) do
@@ -538,7 +542,8 @@ function reconcile!(df,
         flush(logio)
         close(logio)
     end
-    return dbest
+    vbest = sort(map(identity, (p for p in dbest)))
+    return vbest
 end
 
 # reconcilebyname!
@@ -547,10 +552,19 @@ end
 
 reconcile!(df::AbstractDataFrame, field::Pair{Symbol, String}; nmsg = 40) = reconcile!(df, tuple(field), nmsg)
 
-function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
+"""
+    reconcile!(df::AbstractDataFrame, fields; limit = 20, nmsg = 40)
+
+Finde Treffer in der Personendatenbank, schreibe maximal `limit` Ergebnisse pro angefragtem Datensatz
+"""
+
+function reconcile(df::AbstractDataFrame, fields; limit = 20, nmsg = 40)
     coltokey = Dict(col => kgs for (col, kgs) in fields)
 
     dictquery = Dict(p.second => "" for p in coltokey)
+    println(dictquery);
+
+    dfout = similar(df, 0)
     irow = 0
     for row in eachrow(df)
         (irow += 1) % nmsg == 0 && println("Datensatz: ", irow)
@@ -565,20 +579,28 @@ function reconcile!(df::AbstractDataFrame, fields; nmsg = 40)
         end
         if isempty(dictquery) continue end
 
-        gsres = getGS(URLGS, dictquery)
+        gsres = getGS(URLGS, dictquery, limit = limit)
 
         records = gsres["records"]
         n = length(records)
         if n > 0
-            theone = records[1]
-            lastocc = GSOcc.getlastocc(theone)
-            if !isnothing(lastocc)
-                theone["amt"] = lastocc
+            if limit == 1
+                theone = records[1]
+                lastocc = GSOcc.getlastocc(theone)
+                if !isnothing(lastocc)
+                    theone["amt"] = lastocc
+                end
+                rowout = push!(dfout, rowout) |> last
+                writerow!(rowout, theone, n)
+            else
+                for i in 1:min(limit, n)
+                    rowout = push!(dfout, row) |> last
+                    writerow!(rowout, records[i], n)
+                end
             end
-            writerow!(row, theone, n)
         end
     end
-
+    return dfout
 end
 
 
@@ -825,7 +847,7 @@ Suche nach Familienname und oder Vorname
 """
 function evaluategnfn!(record, row, mcols)
 
-    stripsplit(a) = strip.(split(a, r",|;"))
+    stripsplit(a) = strip.(split(String(a), r",|;"))
 
     fnqd = [row[:Familienname]]
     if :Familiennamenvarianten in mcols
