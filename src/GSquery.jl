@@ -481,8 +481,8 @@ function reconcile!(df,
 
                 # Abfrage nach Name und Amtsort/Bistum
 
-                dictquery["name"] = if :Familienname in querycols && row[:Familienname] != ""
-                    row[:Vorname] * " " * row[:Familienname]
+                if :Familienname in querycols && !ismissing(row[:Familienname])
+                    dictquery["name"] =  row[:Vorname] * " " * row[:Familienname]
                 else
                     row[:Vorname]
                 end
