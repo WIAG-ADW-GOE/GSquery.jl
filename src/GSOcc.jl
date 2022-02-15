@@ -106,12 +106,13 @@ const KEYQDPLACE = :Amtsort
 const KEYQDTYPE = :Amtsart
 const KEYQDBEGIN = :Amtsbeginn
 const KEYQDEND = :Amtsende
+const KEYQDIDMONASTERY = :ID_Kloster
 
 # Feldbezeichnungen in der Personendatenbank
 const KEYGSTYPE = "bezeichnung"
 const KEYGSBEGIN = "von"
 const KEYGSEND = "bis"
-
+const KEYGSIDMONASTERY = "klosterid"
 
 # Funktionen
 function islesskey(a, b)
@@ -161,6 +162,8 @@ function evaluatesingle(record, row, tolocc, occmcols)::Vector{String}
 
     typeqd = KEYQDTYPE in occmcols ? row[KEYQDTYPE] : missing
     diocqd = KEYQDPLACE in occmcols ? row[KEYQDPLACE] : missing
+    idmonasteryqd = KEYQDIDMONASTERY in occmcols ? row[KEYQDIDMONASTERY] : missing
+
     beginqd::Union{Int, Missing} = missing
     if KEYQDBEGIN in occmcols
         sdate = row[KEYQDBEGIN]
@@ -201,8 +204,9 @@ function evaluatesingle(record, row, tolocc, occmcols)::Vector{String}
         end
 
 
-        # Amtsort
-        if !ismissing(diocqd) && diocqd != "" && matchplace(occrec, diocqd)
+        # Amtsort or ID_Kloster
+        if (!ismissing(diocqd) && diocqd != "" && matchplace(occrec, diocqd)
+            || (!ismissing(idmonasteryqd) && string(idmonasteryqd) == occrec[KEYGSIDMONASTERY]))
             push!(key, "ao")
         end
 

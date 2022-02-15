@@ -26,7 +26,10 @@ using DataFrames
 using JSON
 using HTTP
 using Dates
-using Infiltrator
+mod_dev = true
+if mod_dev
+    using Infiltrator
+end
 using Logging
 
 include("./Util.jl")
@@ -341,7 +344,7 @@ colid() = (global inputcols; getindex(inputcols::Array{Symbol, 1}, 1))
 
 # Spalten, die vom Programm bewertet werden können.
 const MATCHCOLS = [:Vorname, :Vornamenvarianten, :Familienname, :Familiennamenvarianten, :Sterbedatum]
-const MATCHOCCCOLS = [:Amtsart, :Amtsbeginn, :Amtsende, :Amtsort]
+const MATCHOCCCOLS = [:Amtsart, :Amtsbeginn, :Amtsende, :Amtsort, :ID_Kloster]
 
 # Funktionen
 import Base.isless
@@ -482,9 +485,11 @@ function reconcile!(df,
                 # Abfrage nach Name und Amtsort/Bistum
 
                 if :Familienname in querycols && !ismissing(row[:Familienname])
-                    dictquery["name"] =  row[:Vorname] * " " * row[:Familienname]
+                    c_gn = split(row[:Vorname])
+                    c_fn = split(row[:Familienname], [' ', '-'])
+                    dictquery["name"] = strip(c_gn[1]) * " " * strip(c_fn[1])
                 else
-                    row[:Vorname]
+                    dictquery["name"] = strip(row[:Vorname])
                 end
 
                 # Ämter für row
@@ -515,19 +520,21 @@ function reconcile!(df,
                     records = evaluate!(gsres, evalargs...)
                 end
 
+                bestkey = ""
                 if length(records) > 0
                     bestrec, posbest = findmax(records)
+                    bestkey = bestrec["muster"]
                     if !isless(bestrec, minscore)
                         # nbest: Zahl der Treffer in GS, die zu einer gleichen besten
                         # Bewertung führen.
                         nbest = writematch!(row, bestrec, records)
                     else
                         with_logger(filelog) do
-                            bestkey = bestrec["muster"]
                             @info "abgelehnt" currentid  bestkey
                         end
                     end
                 end
+
                 dbest[nbest] = get(dbest, nbest, 0) + 1
 
         catch
@@ -879,6 +886,7 @@ function evaluategnfn!(record, row, mcols)
 
     ffn = findcommonelement(Util.checkname, fnqd, fngs)
     fgn = findcommonelement(Util.checkname, gnqd, gngs)
+
 
     matchkey = ["fn", "vn"][[ffn, fgn]]
 
